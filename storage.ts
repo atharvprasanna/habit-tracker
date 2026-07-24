@@ -23,22 +23,29 @@ export interface HabitStreak {
   lastCompletedDate: string | null;
 }
 
-const HABITS_KEY = "habit_tracker_habits";
-const COMPLETIONS_KEY = "habit_tracker_completions";
+// userId is set at login so each Google account has its own isolated data
+let _userId = "default";
+
+export function setStorageUser(userId: string) {
+  _userId = userId;
+}
+
+function habitsKey()      { return `habit_tracker_habits_${_userId}`; }
+function completionsKey() { return `habit_tracker_completions_${_userId}`; }
 
 export const storage = {
   getHabits: (): Habit[] => {
-    const data = localStorage.getItem(HABITS_KEY);
+    const data = localStorage.getItem(habitsKey());
     return data ? JSON.parse(data) : [];
   },
   saveHabits: (habits: Habit[]) => {
-    localStorage.setItem(HABITS_KEY, JSON.stringify(habits));
+    localStorage.setItem(habitsKey(), JSON.stringify(habits));
   },
   getCompletions: (): HabitCompletion[] => {
-    const data = localStorage.getItem(COMPLETIONS_KEY);
+    const data = localStorage.getItem(completionsKey());
     return data ? JSON.parse(data) : [];
   },
   saveCompletions: (completions: HabitCompletion[]) => {
-    localStorage.setItem(COMPLETIONS_KEY, JSON.stringify(completions));
+    localStorage.setItem(completionsKey(), JSON.stringify(completions));
   },
 };
