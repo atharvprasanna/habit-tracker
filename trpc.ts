@@ -200,6 +200,9 @@ export const trpc = {
             (c) => c.habitId === input.habitId && c.completedDate === input.date
           );
 
+          const wasChecked = existingIndex === -1; // true = adding, false = removing
+          // Capture streak BEFORE the change so we can detect milestone crossings
+          const streakBefore = calculateStreak(input.habitId, completions);
           if (existingIndex > -1) {
             completions.splice(existingIndex, 1);
           } else {
@@ -211,8 +214,13 @@ export const trpc = {
             });
           }
           storage.saveCompletions(completions);
-          const streak = calculateStreak(input.habitId, completions);
-          return { toggled: true, ...streak };
+          const streakAfter = calculateStreak(input.habitId, completions);
+          return {
+            toggled: true,
+            checked: wasChecked,
+            previousStreak: streakBefore.currentStreak,
+            ...streakAfter,
+          };
         },
         ...options,
       }),

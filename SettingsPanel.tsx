@@ -77,23 +77,32 @@ export function SettingsPanel({ settings, onUpdate, onClose }: Props) {
       {/* Accent colour */}
       <div className={section}>
         <span className={label}>Accent colour</span>
-        <div className="flex flex-wrap gap-2.5">
-          {ACCENT_PRESETS.map(({ label: l, value }) => (
-            <button
-              key={value}
-              title={l}
-              onClick={() => onUpdate({ accentColor: value })}
-              className="w-8 h-8 rounded-full transition-transform hover:scale-110 focus:outline-none"
-              style={{
-                backgroundColor: value,
-                boxShadow:
-                  settings.accentColor === value
-                    ? `0 0 0 2px white, 0 0 0 4px ${value}`
-                    : "none",
-              }}
-            />
-          ))}
+        <div className="grid grid-cols-10 gap-2">
+          {ACCENT_PRESETS.map(({ label: l, value }) => {
+            const isActive = settings.accentColor === value;
+            return (
+              <button
+                key={value}
+                title={l}
+                onClick={() => onUpdate({ accentColor: value })}
+                className="relative w-7 h-7 rounded-full transition-transform hover:scale-110 focus:outline-none flex items-center justify-center"
+                style={{
+                  backgroundColor: value,
+                  boxShadow: isActive ? `0 0 0 2px white, 0 0 0 4px ${value}` : "none",
+                }}
+              >
+                {isActive && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M1.5 6l3 3 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </button>
+            );
+          })}
         </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          {ACCENT_PRESETS.find(p => p.value === settings.accentColor)?.label ?? "Custom"}
+        </p>
       </div>
 
       {/* Data / Export */}

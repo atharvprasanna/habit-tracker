@@ -10,14 +10,31 @@ export interface AppSettings {
 }
 
 export const ACCENT_PRESETS = [
-  { label: "Orange", value: "#f97316" },
-  { label: "Blue",   value: "#3b82f6" },
-  { label: "Purple", value: "#8b5cf6" },
-  { label: "Green",  value: "#10b981" },
-  { label: "Pink",   value: "#ec4899" },
-  { label: "Red",    value: "#ef4444" },
-  { label: "Teal",   value: "#14b8a6" },
-  { label: "Amber",  value: "#f59e0b" },
+  // Warm
+  { label: "Rose",    value: "#f43f5e" },
+  { label: "Red",     value: "#ef4444" },
+  { label: "Orange",  value: "#f97316" },
+  { label: "Amber",   value: "#f59e0b" },
+  { label: "Yellow",  value: "#eab308" },
+  // Nature
+  { label: "Lime",    value: "#84cc16" },
+  { label: "Green",   value: "#22c55e" },
+  { label: "Emerald", value: "#10b981" },
+  { label: "Teal",    value: "#14b8a6" },
+  // Cool
+  { label: "Cyan",    value: "#06b6d4" },
+  { label: "Sky",     value: "#0ea5e9" },
+  { label: "Blue",    value: "#3b82f6" },
+  { label: "Indigo",  value: "#6366f1" },
+  // Purple
+  { label: "Violet",  value: "#8b5cf6" },
+  { label: "Purple",  value: "#a855f7" },
+  { label: "Fuchsia", value: "#d946ef" },
+  { label: "Pink",    value: "#ec4899" },
+  // Neutral
+  { label: "Slate",   value: "#64748b" },
+  { label: "Stone",   value: "#78716c" },
+  { label: "Zinc",    value: "#71717a" },
 ];
 
 const DEFAULTS: AppSettings = {
@@ -77,11 +94,36 @@ export function applySettings(s: AppSettings) {
     document.head.appendChild(el);
   }
   const a = s.accentColor;
+  // White-tick SVG checkmark encoded for use in background-image
+  const checkSvg = `url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M13.707 4.293a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414 0l-3-3a1 1 0 0 1 1.414-1.414L6 10.586l6.293-6.293a1 1 0 0 1 1.414 0z' fill='white'/%3E%3C/svg%3E")`;
   el.textContent = `
     .ht-accent-btn { background-color: ${a} !important; }
     .ht-accent-btn:hover { filter: brightness(0.88); }
     .ht-accent-text { color: ${a} !important; }
-    input[type="checkbox"] { accent-color: ${a}; width: 1.15rem; height: 1.15rem; border-radius: 5px; cursor: pointer; }
+    input[type="checkbox"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 1.2rem;
+      height: 1.2rem;
+      border-radius: 5px;
+      border: 2px solid #d1d5db;
+      cursor: pointer;
+      background-color: white;
+      vertical-align: middle;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+    input[type="checkbox"]:checked {
+      background-color: var(--cb-color, ${a});
+      border-color: var(--cb-color, ${a});
+      background-image: ${checkSvg};
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 75%;
+    }
+    input[type="checkbox"]:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
   `;
 }
 

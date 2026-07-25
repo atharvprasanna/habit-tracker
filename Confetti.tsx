@@ -91,7 +91,10 @@ export function useConfetti() {
 
 const MILESTONES: Record<number, { emoji: string; message: string }> = {
   7:   { emoji: "🔥", message: "7-day streak! You're on fire!" },
+  10:  { emoji: "⭐", message: "10 days in a row! Great momentum!" },
   15:  { emoji: "⚡", message: "15 days strong! Incredible momentum!" },
+  20:  { emoji: "💪", message: "20 days! Habit officially formed!" },
+  25:  { emoji: "🌟", message: "25 days! Almost a full month!" },
   30:  { emoji: "🏆", message: "30-day streak! A full month of consistency!" },
   50:  { emoji: "💎", message: "50 days! You're a habit machine!" },
   100: { emoji: "🚀", message: "100-DAY STREAK! Legendary dedication!" },
@@ -99,4 +102,13 @@ const MILESTONES: Record<number, { emoji: string; message: string }> = {
 
 export function getMilestone(streak: number) {
   return MILESTONES[streak] ?? null;
+}
+
+/** Returns the highest milestone crossed when streak grew from prevStreak to newStreak. */
+export function getCrossedMilestone(prevStreak: number, newStreak: number) {
+  const crossed = (Object.keys(MILESTONES) as unknown as number[])
+    .map(Number)
+    .filter((n) => n > prevStreak && n <= newStreak)
+    .sort((a, b) => b - a); // highest first
+  return crossed.length > 0 ? MILESTONES[crossed[0]] : null;
 }

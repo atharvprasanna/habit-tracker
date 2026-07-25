@@ -21,9 +21,14 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
     const month = currentDate.getMonth();
     const year = currentDate.getFullYear();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const today = new Date();
-    const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
-    const daysSoFar = isCurrentMonth ? today.getDate() : daysInMonth;
+
+    // Use the same UTC date-key approach as Dashboard.tsx so counts match
+    const todayUTC = new Date().toISOString().split("T")[0];
+    const calendarDates = Array.from({ length: daysInMonth }, (_, i) => {
+      const utcKey = new Date(year, month, i + 1).toISOString().split("T")[0];
+      return { utcKey, isPast: utcKey <= todayUTC };
+    });
+    const daysSoFar = calendarDates.filter((d) => d.isPast).length;
 
     const completions = storage.getCompletions();
 
@@ -32,11 +37,10 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
     let leastConsistent: { name: string; rate: number; color: string } | null = null;
 
     const habitStats = habits.map((habit) => {
-      let count = 0;
-      for (let d = 1; d <= daysSoFar; d++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        if (completions.some((c) => c.habitId === habit.id && c.completedDate === dateStr)) count++;
-      }
+      const count = calendarDates.filter(
+        ({ utcKey, isPast }) =>
+          isPast && completions.some((c) => c.habitId === habit.id && c.completedDate === utcKey)
+      ).length;
       const rate = daysSoFar > 0 ? count / daysSoFar : 0;
       totalCompletions += count;
 

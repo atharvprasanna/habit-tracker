@@ -4,6 +4,8 @@ import { storage } from "./storage";
 interface Props {
   habits: { id: number; name: string; color: string }[];
   refreshKey?: number;
+  /** When provided, the heatmap uses this habit and hides its own selector */
+  habitId?: number;
 }
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -20,8 +22,9 @@ function localDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function Heatmap({ habits, refreshKey }: Props) {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+export default function Heatmap({ habits, refreshKey, habitId }: Props) {
+  const [internalId, setInternalId] = useState<number | null>(null);
+  const selectedId = habitId ?? internalId;
   const year = new Date().getFullYear();
 
   const completedSet = useMemo<Set<string>>(() => {
@@ -73,11 +76,8 @@ export default function Heatmap({ habits, refreshKey }: Props) {
       });
     });
 
-    // Compute pixel width each month label should span
-    const monthLabels = rawLabels.map(({ month, col }, i) => {
-      const nextCol = i < rawLabels.length - 1 ? rawLabels[i + 1].col : cells.length;
-      return { month, col, widthPx: (nextCol - col) * WEEK_W };
-    });
+    // Keep col index for proportional flex sizing in the render
+    const monthLabels = rawLabels.map(({ month, col }) => ({ month, col }));
 
     return { weeks: cells, monthLabels };
   }, [year, completedSet]);
@@ -87,115 +87,117 @@ export default function Heatmap({ habits, refreshKey }: Props) {
 
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
-  return (
-    <div className="mt-6 border rounded-2xl bg-card p-6">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-5">
-        <h2 className="text-base font-semibold flex items-center gap-2">
-          <span className="text-lg">📅</span> Year in Review
-        </h2>
-        <select
-          value={selectedId ?? ""}
-          onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
-          className="px-3 py-1.5 border rounded-xl bg-background text-foreground text-sm"
-        >
-          <option value="">Select a habit…</option>
-          {habits.map((h) => (
-            <option key={h.id} value={h.id}>{h.name}</option>
-          ))}
-        </select>
-      </div>
+  // When controlled externally (habitId prop), render just the grid with no card wrapper
+  const controlled = habitId !== undefined;
+
+  const inner = (
+    <>
+      {/* Standalone header + selector — only when not controlled by parent */}
+      {!controlled && (
+        <div className="flex items-center gap-4 mb-5">
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            <span className="text-lg">📅</span> Year in Review
+          </h2>
+          <select
+            value={internalId ?? ""}
+            onChange={(e) => setInternalId(e.target.value ? Number(e.target.value) : null)}
+            className="px-3 py-1.5 border rounded-xl bg-background text-foreground text-sm"
+          >
+            <option value="">Select a habit…</option>
+            {habits.map((h) => (
+              <option key={h.id} value={h.id}>{h.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {!selectedId ? (
+        controlled ? null : (
         <div className="text-center py-8 text-sm text-muted-foreground">
-          Select a habit to see your {year} contribution map
+          Select a habit above to see your {year} contribution map
         </div>
+        )
       ) : (
-        <div className="overflow-x-auto">
-          <div style={{ minWidth: weeks.length * WEEK_W + DAY_COL_W + 16 }}>
-
-            {/* Month label row — flex, each label exactly as wide as its span */}
-            <div className="flex" style={{ marginLeft: DAY_COL_W + GAP }}>
-              {monthLabels.map(({ month, widthPx }, i) => (
+        <div className="w-full">
+          {/* Month label row — proportional flex widths based on week count */}
+          <div className="flex" style={{ marginLeft: DAY_COL_W + GAP }}>
+            {monthLabels.map(({ month, col }, i) => {
+              const nextCol = i < monthLabels.length - 1 ? monthLabels[i + 1].col : weeks.length;
+              const spanWeeks = nextCol - col;
+              return (
                 <div
                   key={i}
-                  className="text-[10px] text-muted-foreground overflow-hidden shrink-0"
-                  style={{ width: widthPx }}
+                  className="text-[10px] text-muted-foreground overflow-hidden"
+                  style={{ flex: spanWeeks, minWidth: 0 }}
                 >
                   {month}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            {/* Grid: day labels + week columns */}
-            <div className="flex mt-1" style={{ gap: GAP }}>
+          {/* Grid: day labels + week columns */}
+          <div className="flex mt-1 w-full" style={{ gap: GAP }}>
 
-              {/* Day-of-week labels */}
-              <div className="flex flex-col shrink-0" style={{ gap: GAP, width: DAY_COL_W }}>
-                {DAY_LABELS.map((d, i) => (
-                  <div
-                    key={i}
-                    className="text-[10px] text-muted-foreground text-right pr-1 flex items-center justify-end"
-                    style={{ height: CELL }}
-                  >
-                    {d}
-                  </div>
-                ))}
-              </div>
-
-              {/* Week columns */}
-              {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col shrink-0" style={{ gap: GAP }}>
-                  {week.map((cell, di) => {
-                    if (!cell.dateStr) {
-                      return <div key={di} style={{ width: CELL, height: CELL }} />;
-                    }
-                    const bg = cell.isFuture
-                      ? undefined
-                      : cell.completed
-                      ? accentColor
-                      : undefined;
-                    return (
-                      <div
-                        key={di}
-                        className={`rounded-[2px] cursor-pointer transition-opacity hover:opacity-70 ${
-                          cell.isFuture
-                            ? "border border-dashed border-border/40"
-                            : cell.completed
-                            ? ""
-                            : "bg-muted"
-                        }`}
-                        style={{ width: CELL, height: CELL, backgroundColor: bg }}
-                        onMouseEnter={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const [y, m, d] = cell.dateStr!.split("-").map(Number);
-                          const label = new Date(y, m - 1, d).toLocaleDateString("en-US", {
-                            month: "short", day: "numeric", year: "numeric",
-                          });
-                          setTooltip({
-                            text: `${label} — ${cell.completed ? "✓ Completed" : cell.isFuture ? "upcoming" : "✗ Missed"}`,
-                            x: rect.left + window.scrollX,
-                            y: rect.top + window.scrollY - 36,
-                          });
-                        }}
-                        onMouseLeave={() => setTooltip(null)}
-                      />
-                    );
-                  })}
+            {/* Day-of-week labels — fixed width */}
+            <div className="flex flex-col shrink-0" style={{ gap: GAP, width: DAY_COL_W }}>
+              {DAY_LABELS.map((d, i) => (
+                <div
+                  key={i}
+                  className="text-[10px] text-muted-foreground text-right pr-1 flex items-center justify-end"
+                  style={{ height: CELL }}
+                >
+                  {d}
                 </div>
               ))}
             </div>
 
-            {/* Legend */}
-            <div className="flex items-center gap-3 mt-3 justify-end" style={{ marginLeft: DAY_COL_W }}>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <div className="rounded-[2px]" style={{ width: CELL, height: CELL, backgroundColor: accentColor }} />
-                Completed
+            {/* Week columns — flex: 1 each so they spread to fill full width */}
+            {weeks.map((week, wi) => (
+              <div key={wi} className="flex flex-col flex-1" style={{ gap: GAP }}>
+                {week.map((cell, di) => {
+                  if (!cell.dateStr) {
+                    return <div key={di} style={{ height: CELL }} />;
+                  }
+                  const bg = cell.isFuture ? undefined : cell.completed ? accentColor : undefined;
+                  return (
+                    <div
+                      key={di}
+                      className={`rounded-[2px] cursor-pointer transition-opacity hover:opacity-70 w-full ${
+                        cell.isFuture
+                          ? "border border-dashed border-border/40"
+                          : cell.completed ? "" : "bg-muted"
+                      }`}
+                      style={{ height: CELL, backgroundColor: bg }}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const [y, m, d] = cell.dateStr!.split("-").map(Number);
+                        const label = new Date(y, m - 1, d).toLocaleDateString("en-US", {
+                          month: "short", day: "numeric", year: "numeric",
+                        });
+                        setTooltip({
+                          text: `${label} — ${cell.completed ? "✓ Completed" : cell.isFuture ? "upcoming" : "✗ Missed"}`,
+                          x: rect.left + window.scrollX,
+                          y: rect.top + window.scrollY - 36,
+                        });
+                      }}
+                      onMouseLeave={() => setTooltip(null)}
+                    />
+                  );
+                })}
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <div className="rounded-[2px] bg-muted" style={{ width: CELL, height: CELL }} />
-                Missed
-              </div>
+            ))}
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center gap-3 mt-3 justify-end">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="rounded-[2px]" style={{ width: CELL, height: CELL, backgroundColor: accentColor }} />
+              Completed
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="rounded-[2px] bg-muted" style={{ width: CELL, height: CELL }} />
+              Missed
             </div>
           </div>
         </div>
@@ -209,6 +211,12 @@ export default function Heatmap({ habits, refreshKey }: Props) {
           {tooltip.text}
         </div>
       )}
-    </div>
+    </>
   );
+
+  // Controlled (embedded): no wrapper card — parent supplies it
+  if (controlled) return <>{inner}</>;
+
+  // Standalone: wrap in its own card
+  return <div className="mt-6 border rounded-2xl bg-card p-6">{inner}</div>;
 }

@@ -13,22 +13,27 @@ export function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
   const year = currentDate.getFullYear();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthName = currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  const today = new Date();
-  const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
-  const daysSoFar = isCurrentMonth ? today.getDate() : daysInMonth;
+  const todayUTC = new Date().toISOString().split("T")[0]; // UTC date key, matches how app stores check-ins
 
   const completions = storage.getCompletions();
-
   const DAY_ABBR = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-  // Build per-habit stats
+  // Build calendar dates using the same UTC-key approach as Dashboard.tsx
+  // Each Date is local midnight; toISOString() gives the UTC key the app stores
+  const calendarDates: { localDate: Date; utcKey: string; isPast: boolean }[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const localDate = new Date(year, month, d); // local midnight
+    const utcKey = localDate.toISOString().split("T")[0]; // UTC date string, same as Dashboard
+    calendarDates.push({ localDate, utcKey, isPast: utcKey <= todayUTC });
+  }
+  const daysSoFar = calendarDates.filter((d) => d.isPast).length;
+
+  // Build per-habit stats using UTC keys to match stored completions
   const habitStats = habits.map((habit) => {
-    const days: boolean[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      days.push(completions.some((c) => c.habitId === habit.id && c.completedDate === dateStr));
-    }
-    const completedCount = days.slice(0, daysSoFar).filter(Boolean).length;
+    const days: boolean[] = calendarDates.map(({ utcKey }) =>
+      completions.some((c) => c.habitId === habit.id && c.completedDate === utcKey)
+    );
+    const completedCount = calendarDates.filter(({ isPast }, i) => isPast && days[i]).length;
     const rate = daysSoFar > 0 ? Math.round((completedCount / daysSoFar) * 100) : 0;
     const streak = (habit as any).currentStreak ?? 0;
     return { habit, days, completedCount, rate, streak };
@@ -44,7 +49,7 @@ export function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
     if (rate < worstRate) { worstRate = rate; worstHabit = habit.name; }
   });
 
-  // Day header row
+  // Day header row — use local day-of-week for display
   const jan1dow = new Date(year, month, 1).getDay();
   const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => {
     const dow = DAY_ABBR[(jan1dow + i) % 7];
@@ -56,16 +61,16 @@ export function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
   // Habit rows — coloured squares for done, grey for missed, faded for future
   const habitRows = habitStats.map(({ habit, days, completedCount, rate, streak }) => {
     const cells = Array.from({ length: daysInMonth }, (_, i) => {
-      const isFuture = i + 1 > daysSoFar;
+      const isFuture = !calendarDates[i].isPast;
       const done = days[i];
       if (isFuture) {
-        return `<td style="padding:3px 2px;text-align:center"><div style="width:16px;height:16px;border-radius:4px;border:1.5px dashed #e2e8f0;margin:auto"></div></td>`;
+        return `<td style="padding:3px 2px;text-align:center"><div style="width:14px;height:14px;border-radius:3px;border:1px dashed #cbd5e1;margin:auto"></div></td>`;
       }
-      const bg = done ? habit.color : "#e2e8f0";
-      const inner = done
-        ? `<svg width="10" height="10" viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-        : "";
-      return `<td style="padding:3px 2px;text-align:center"><div style="width:16px;height:16px;border-radius:4px;background:${bg};margin:auto;display:flex;align-items:center;justify-content:center">${inner}</div></td>`;
+      if (done) {
+        // Filled square with colour + white checkmark via unicode (more print-safe than SVG in flex)
+        return `<td style="padding:3px 2px;text-align:center"><div style="width:14px;height:14px;border-radius:3px;background-color:${habit.color};margin:auto;line-height:14px;text-align:center;font-size:9px;color:white;font-weight:700">✓</div></td>`;
+      }
+      return `<td style="padding:3px 2px;text-align:center"><div style="width:14px;height:14px;border-radius:3px;background-color:#e2e8f0;margin:auto"></div></td>`;
     }).join("");
 
     const rateColor = rate >= 70 ? "#10b981" : rate >= 40 ? "#f59e0b" : "#ef4444";
@@ -111,12 +116,13 @@ export function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
   <meta charset="UTF-8"/>
   <title>Habits Report — ${monthName}</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8fafc; color: #0f172a; }
     @media print {
       body { background: white; }
       @page { size: A4 landscape; margin: 10mm 12mm; }
       .no-print { display: none; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
     .page { max-width: 1100px; margin: 0 auto; padding: 32px; }
     .header { margin-bottom: 24px; }

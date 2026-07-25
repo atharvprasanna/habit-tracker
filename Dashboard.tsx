@@ -2,7 +2,7 @@ import { Button, Input } from "./ui-shims";
 import { useSettings } from "./useSettings";
 import { SettingsPanel } from "./SettingsPanel";
 import QuoteOfDay from "./QuoteOfDay";
-import { useConfetti, getMilestone } from "./Confetti";
+import { useConfetti, getCrossedMilestone } from "./Confetti";
 import Heatmap from "./Heatmap";
 import MonthlySummary from "./MonthlySummary";
 import { trpc } from "./trpc";
@@ -41,7 +41,16 @@ export default function Dashboard() {
   const [selectedGraphHabitId, setSelectedGraphHabitId] = useState<number | null>(null);
   const [heatmapKey, setHeatmapKey] = useState(0);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const colorOptions = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#06b6d4"];
+  const colorOptions = [
+    // Row 1 — Reds/Pinks
+    "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308",
+    // Row 2 — Greens
+    "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
+    // Row 3 — Blues/Indigo
+    "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7",
+    // Row 4 — Pink/Purple/Neutral
+    "#d946ef", "#ec4899", "#f472b6", "#64748b", "#1e293b",
+  ];
   const menuRefs = useRef<{ [key: string | number]: HTMLDivElement | null | { top: number; left: number } }>({});
   const colorPickerRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,25 +72,26 @@ export default function Dashboard() {
 
   // Check in mutation - toggle completion
   const checkInMutation = trpc.checkins.create.useMutation({
-    onSuccess: (_data, variables) => {
+    onSuccess: (data) => {
       utils.checkins.calendar.invalidate();
-      setHeatmapKey((k) => k + 1); // refresh heatmap immediately
-      utils.habits.list.invalidate().then(() => {
-        // Check milestone after habits refresh
-        const updatedHabits = utils.habits.list.getData() ?? [];
-        const habit = updatedHabits.find((h: any) => h.id === variables.habitId);
-        if (habit) {
-          const streak = (habit as any).currentStreak ?? 0;
-          const milestone = getMilestone(streak);
-          if (milestone) {
-            fireConfetti();
-            toast.success(`${milestone.emoji} ${milestone.message}`, {
-              duration: 5000,
-              style: { fontWeight: "600", fontSize: "15px" },
-            });
-          }
-        }
-      });
+      utils.habits.list.invalidate();
+      setHeatmapKey((k) => k + 1);
+      // Only celebrate when checking IN (not when unchecking)
+      if (!(data as any).checked) return;
+      const prevStreak = (data as any).previousStreak ?? 0;
+      const newStreak = (data as any).currentStreak ?? 0;
+      // Only fire if streak actually grew and crossed a milestone — prevents
+      // re-triggering when checking an old date while already at a milestone
+      if (newStreak <= prevStreak) return;
+      // Use range check so gap-filling that jumps over a milestone still fires
+      const milestone = getCrossedMilestone(prevStreak, newStreak);
+      if (milestone) {
+        fireConfetti();
+        toast.success(`${milestone.emoji} ${milestone.message}`, {
+          duration: 5000,
+          style: { fontWeight: "600", fontSize: "15px" },
+        });
+      }
     },
     onError: (error) => {
       toast.error(error.message || "Failed to toggle habit");
@@ -141,9 +151,14 @@ export default function Dashboard() {
       toast.error("Enter a habit name");
       return;
     }
+    // Auto-pick a color: prefer one not already used, otherwise cycle by index
+    const usedColors = new Set(habits.map((h) => h.color));
+    const autoColor =
+      colorOptions.find((c) => !usedColors.has(c)) ??
+      colorOptions[habits.length % colorOptions.length];
     createMutation.mutate({
       name: newHabitName,
-      color: "#3b82f6",
+      color: autoColor,
       icon: "circle",
     });
   };
@@ -363,7 +378,7 @@ export default function Dashboard() {
       <div className="bg-card sticky top-0 z-20">
         <div className="max-w-full mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Flame className="w-8 h-8 ht-accent-text" />
+            <Flame className="w-8 h-8" style={{ color: "#f97316" }} />
             <h1 className="text-2xl font-bold">Habits Tracker</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -460,9 +475,9 @@ export default function Dashboard() {
             No habits yet. Add one to get started!
           </div>
         ) : (
-          <div className="border rounded-2xl bg-card overflow-visible">
-            <div className="overflow-x-auto overflow-y-visible" style={{ overscrollBehavior: 'contain' }}>
-            <table className="w-full text-sm border-collapse overflow-visible">
+          <div className="border rounded-2xl bg-card overflow-hidden">
+            <div className="overflow-x-auto" style={{ overscrollBehavior: 'contain' }}>
+            <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b bg-muted">
                   <th className="px-4 py-3 text-left font-semibold text-sm min-w-40 sticky left-0 bg-card z-10">
@@ -489,55 +504,39 @@ export default function Dashboard() {
                 {habits.map((habit) => {
                   const completionCount = getCompletionCount(habit.id);
                   const goal = habitGoals[habit.id] || 0;
-                  
+                  const hasColor = !!habit.color;
+
                   return (
                     <tr key={habit.id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-3 font-medium text-sm sticky left-0 z-10 flex items-center justify-between border-r" style={{ backgroundColor: habit.color || "#3b82f6", color: "white" }}>
-                        <div className="flex-1">
-                          {editingHabitId === habit.id ? (
-                            <div className="flex gap-2">
-                              <Input
-                                value={editingHabitName}
-                                onChange={(e) => setEditingHabitName(e.target.value)}
-                                autoFocus
-                                className="h-8"
-                              />
-                              <Button size="sm" onClick={() => handleSaveEditHabit(habit.id)} disabled={editMutation.isPending}>Save</Button>
-                            </div>
-                          ) : (
-                            <div>{habit.name}</div>
+                      {/* Habit name cell */}
+                      <td
+                        className="px-4 py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r"
+                        style={hasColor ? { backgroundColor: habit.color, color: "white" } : undefined}
+                      >
+                        <div className="flex-1 flex items-center gap-2 min-w-0">
+                          {hasColor && (
+                            <span className="inline-block w-2 h-2 rounded-full bg-white/50 shrink-0" />
                           )}
+                          <span className="text-[15px]">{habit.name}</span>
                         </div>
-                        <div className="relative">
+                        <div className="relative shrink-0">
                           <button
                             onClick={(e) => {
                               const rect = e.currentTarget.getBoundingClientRect();
-                              // Calculate position with offset to ensure visibility below button
                               let top = rect.bottom + 4;
                               let left = rect.right - 160;
-                              
-                              // Ensure dropdown doesn't go off-screen on the right
                               if (left < 0) left = 4;
-                              
-                              // Ensure dropdown doesn't go off-screen on the bottom (adjust to show above if needed)
-                              const dropdownHeight = 120; // Approximate height of dropdown
-                              if (top + dropdownHeight > window.innerHeight) {
-                                top = rect.top - dropdownHeight - 4;
-                              }
-                              
+                              if (top + 160 > window.innerHeight) top = rect.top - 164;
                               (menuRefs.current as any)[`pos-${habit.id}`] = { top, left };
                               setOpenMenuId(openMenuId === habit.id ? null : habit.id);
                             }}
-                            className="p-1 hover:bg-muted rounded"
+                            className={`p-1 rounded hover:bg-black/10 ${hasColor ? "text-white/80" : "text-muted-foreground"}`}
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
                           {openMenuId === habit.id ? createPortal(
                             <>
-                              <div
-                                className="fixed inset-0 z-40"
-                                onClick={() => setOpenMenuId(null)}
-                              />
+                              <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
                               <div
                                 ref={(el) => { menuRefs.current[habit.id] = el; }}
                                 className="fixed bg-background border rounded-2xl shadow-2xl z-50 min-w-40 overflow-hidden"
@@ -546,65 +545,41 @@ export default function Dashboard() {
                                   left: `${((menuRefs.current as any)[`pos-${habit.id}`] as any)?.left ?? 0}px`,
                                 }}
                               >
-                              <button
-                                onClick={() => handleEditHabit(habit.id, habit.name)}
-                                className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleShowColorPicker(habit.id)}
-                                className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t"
-                              >
-                                <Palette className="w-4 h-4" />
-                                Color
-                              </button>
-                              {!isFirstHabit(habit.id) && (
-                                <button
-                                  onClick={() => handleReorderHabit('up')}
-                                  className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t"
-                                >
-                                  <ChevronUp className="w-4 h-4" />
-                                  Move Up
+                                <button onClick={() => handleEditHabit(habit.id, habit.name)} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm">
+                                  <Edit2 className="w-4 h-4" /> Edit
                                 </button>
-                              )}
-                              {!isLastHabit(habit.id) && (
-                                <button
-                                  onClick={() => handleReorderHabit('down')}
-                                  className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm"
-                                >
-                                  <ChevronDown className="w-4 h-4" />
-                                  Move Down
+                                <button onClick={() => handleShowColorPicker(habit.id)} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
+                                  <Palette className="w-4 h-4" /> Color
                                 </button>
-                              )}
-                              <button
-                                onClick={() => handleArchiveHabit(habit.id)}
-                                className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t"
-                              >
-                                <Archive className="w-4 h-4" />
-                                Archive
-                              </button>
-                              <button
-                                onClick={() => handleDeleteHabit(habit.id)}
-                                className="w-full px-4 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950 flex items-center gap-2 text-sm border-t text-red-600"
-                                disabled={deleteMutation.isPending}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                Delete
-                              </button>
-                            </div>
+                                {!isFirstHabit(habit.id) && (
+                                  <button onClick={() => handleReorderHabit('up')} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
+                                    <ChevronUp className="w-4 h-4" /> Move Up
+                                  </button>
+                                )}
+                                {!isLastHabit(habit.id) && (
+                                  <button onClick={() => handleReorderHabit('down')} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm">
+                                    <ChevronDown className="w-4 h-4" /> Move Down
+                                  </button>
+                                )}
+                                <button onClick={() => handleArchiveHabit(habit.id)} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
+                                  <Archive className="w-4 h-4" /> Archive
+                                </button>
+                                <button onClick={() => handleDeleteHabit(habit.id)} className="w-full px-4 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950 flex items-center gap-2 text-sm border-t text-red-600" disabled={deleteMutation.isPending}>
+                                  <Trash2 className="w-4 h-4" /> Delete
+                                </button>
+                              </div>
                             </>,
                             document.body
                           ) : null}
                         </div>
                       </td>
+
+                      {/* Calendar cells */}
                       {calendarDates.map((date, idx) => {
                         const dateStr = date.toISOString().split("T")[0];
                         const isCompleted = isDateCompleted(habit.id, date);
                         const isToday = new Date().toISOString().split("T")[0] === dateStr;
                         const isFutureDate = date > new Date();
-
                         return (
                           <td
                             key={idx}
@@ -615,7 +590,8 @@ export default function Dashboard() {
                               type="checkbox"
                               checked={isCompleted && !isFutureDate}
                               onChange={() => !isFutureDate && handleCheckIn(habit.id, dateStr)}
-                              className="w-5 h-5 cursor-pointer accent-green-500"
+                              className="w-5 h-5 cursor-pointer"
+                              style={{ '--cb-color': habit.color || settings.accentColor } as React.CSSProperties}
                               title={date.toLocaleDateString()}
                               onClick={(e) => e.stopPropagation()}
                               disabled={isFutureDate}
@@ -623,6 +599,8 @@ export default function Dashboard() {
                           </td>
                         );
                       })}
+
+                      {/* Goal */}
                       <td className="px-4 py-3 text-center border-l bg-blue-50 dark:bg-blue-950 sticky right-28 z-10 w-24 min-w-24">
                         <input
                           type="number"
@@ -638,6 +616,8 @@ export default function Dashboard() {
                           title={`Max: ${calendarDates.length} days`}
                         />
                       </td>
+
+                      {/* Achievement */}
                       <td className="px-4 py-3 text-center border-l font-semibold bg-green-50 dark:bg-green-950 sticky right-0 z-10 w-28 min-w-28">
                         <div className="flex items-center justify-center gap-2">
                           <span>{completionCount}</span>
@@ -657,13 +637,18 @@ export default function Dashboard() {
           </div>
         )}
         
+        {/* Monthly Summary — above Progress */}
+        {habits.length > 0 && (
+          <MonthlySummary habits={habits as any} currentDate={currentDate} />
+        )}
+
         {/* Progress Graph Section */}
         {habits.length > 0 && (
           <div className="mt-6 border rounded-2xl bg-card p-6">
             <div className="flex items-center gap-4 mb-6">
               <h2 className="text-base font-semibold flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-blue-500" />
-                Progress
+                Habit Details
               </h2>
               <select
                 value={selectedGraphHabitId ?? ""}
@@ -679,6 +664,12 @@ export default function Dashboard() {
 
             {selectedGraphHabitId && graphHabit && (
               <>
+                {/* Month in Review label */}
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Month in Review</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
                 {/* Stat cards */}
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   {/* Streak card */}
@@ -813,20 +804,63 @@ export default function Dashboard() {
 
             {!selectedGraphHabitId && (
               <div className="text-center py-10 text-muted-foreground text-sm">
-                Select a habit above to see your progress chart
+                Select a habit above to see your progress &amp; yearly review
               </div>
             )}
           </div>
         )}
 
-        {/* Monthly Summary */}
-        {habits.length > 0 && (
-          <MonthlySummary habits={habits as any} currentDate={currentDate} />
+        {/* Year in Review — only shown after a habit is selected */}
+        {habits.length > 0 && selectedGraphHabitId && (
+          <div className="mt-6 border rounded-2xl bg-card p-6">
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-lg">📅</span>
+              <h2 className="text-base font-semibold">Year in Review</h2>
+              {graphHabit && (
+                <span className="text-sm text-muted-foreground ml-1">— {graphHabit.name}</span>
+              )}
+            </div>
+            <Heatmap
+              habits={habits.map(h => ({ id: h.id, name: h.name, color: h.color || "#f97316" }))}
+              habitId={selectedGraphHabitId ?? undefined}
+              refreshKey={heatmapKey}
+            />
+          </div>
         )}
 
-        {/* Heatmap */}
-        {habits.length > 0 && (
-          <Heatmap habits={habits.map(h => ({ id: h.id, name: h.name, color: h.color || "#f97316" }))} refreshKey={heatmapKey} />
+        {/* Edit Habit Dialog */}
+        {editingHabitId !== null && createPortal(
+          <>
+            <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setEditingHabitId(null)} />
+            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background border rounded-2xl shadow-2xl z-50 p-6 w-80">
+              <h3 className="text-lg font-semibold mb-1">Edit Habit</h3>
+              <p className="text-sm text-muted-foreground mb-4">Rename this habit</p>
+              <Input
+                value={editingHabitName}
+                onChange={(e) => setEditingHabitName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveEditHabit(editingHabitId);
+                  if (e.key === "Escape") setEditingHabitId(null);
+                }}
+                autoFocus
+                className="mb-4"
+                placeholder="Habit name…"
+              />
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1 ht-accent-btn text-white"
+                  onClick={() => handleSaveEditHabit(editingHabitId)}
+                  disabled={editMutation.isPending}
+                >
+                  Save
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => setEditingHabitId(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </>,
+          document.body
         )}
 
         {/* Color Picker Modal */}
@@ -838,28 +872,44 @@ export default function Dashboard() {
             />
             <div
               ref={colorPickerRef}
-              className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-background border rounded-lg shadow-2xl z-50 p-6 w-80"
+              className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-background border rounded-2xl shadow-2xl z-50 p-6 w-72"
             >
-              <h3 className="text-lg font-semibold mb-4">Choose Color</h3>
-              <div className="grid grid-cols-5 gap-3 mb-4">
-                {colorOptions.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => {
-                      handleUpdateColor(selectedHabitForColor, color);
-                    }}
-                    className="w-12 h-12 rounded-lg border-2 hover:border-foreground transition-all"
-                    style={{
-                      backgroundColor: color,
-                      borderColor: getHabitColor(selectedHabitForColor) === color ? '#000' : 'transparent',
-                    }}
-                    title={color}
-                  />
-                ))}
+              <h3 className="text-base font-semibold mb-1">Choose Colour</h3>
+              <p className="text-xs text-muted-foreground mb-4">Pick a colour for this habit</p>
+              <div className="grid grid-cols-5 gap-2.5 mb-5">
+                {/* Clear / no-colour option */}
+                <button
+                  onClick={() => handleUpdateColor(selectedHabitForColor, "")}
+                  className="relative w-10 h-10 rounded-xl border-2 border-dashed border-muted-foreground/40 hover:border-muted-foreground transition-all flex items-center justify-center text-muted-foreground hover:scale-110"
+                  title="No colour"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+                {colorOptions.map((color) => {
+                  const isSelected = getHabitColor(selectedHabitForColor) === color;
+                  return (
+                    <button
+                      key={color}
+                      onClick={() => handleUpdateColor(selectedHabitForColor, color)}
+                      className="relative w-10 h-10 rounded-xl transition-transform hover:scale-110 focus:outline-none flex items-center justify-center"
+                      style={{
+                        backgroundColor: color,
+                        boxShadow: isSelected ? `0 0 0 2px white, 0 0 0 4px ${color}` : "none",
+                      }}
+                      title={color}
+                    >
+                      {isSelected && (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <path d="M2 7l3.5 3.5L12 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
               <Button
                 variant="outline"
-                className="w-full"
+                className="w-full rounded-xl"
                 onClick={() => setShowColorPicker(false)}
               >
                 Cancel
