@@ -370,37 +370,31 @@ function DashboardLayoutContent({
                 </Avatar>
               </button>
             ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <Avatar className="h-9 w-9 border shrink-0">
-                      <AvatarImage src={(user as any)?.picture} alt={user?.name} />
-                      <AvatarFallback className="text-xs font-medium">
-                        {user?.name?.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate leading-none">
-                        {user?.name || "-"}
-                      </p>
-                      {(user as any)?.email && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {(user as any).email}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
+              <div className="flex items-center gap-3 rounded-lg px-1 py-1 w-full">
+                <Avatar className="h-9 w-9 border shrink-0">
+                  <AvatarImage src={(user as any)?.picture} alt={user?.name} />
+                  <AvatarFallback className="text-xs font-medium">
+                    {user?.name?.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate leading-none">
+                    {user?.name || "-"}
+                  </p>
+                  {(user as any)?.email && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {(user as any).email}
+                    </p>
+                  )}
+                  <button
                     onClick={logout}
-                    className="cursor-pointer text-destructive focus:text-destructive"
+                    className="flex items-center gap-1 mt-1.5 text-xs text-destructive hover:opacity-75 transition-opacity"
                   >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Sign out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <LogOut className="h-3 w-3" />
+                    Sign out
+                  </button>
+                </div>
+              </div>
             )}
           </SidebarFooter>
         </Sidebar>

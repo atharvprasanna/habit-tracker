@@ -7,6 +7,7 @@ export interface AppSettings {
   theme: Theme;
   font: FontChoice;
   accentColor: string;
+  soundEnabled: boolean;
 }
 
 export const ACCENT_PRESETS = [
@@ -41,6 +42,7 @@ const DEFAULTS: AppSettings = {
   theme: "light",
   font: "default",
   accentColor: "#f97316",
+  soundEnabled: false,
 };
 
 const STORAGE_KEY = "habit-tracker-settings";

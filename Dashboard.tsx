@@ -3,13 +3,14 @@ import { useSettings } from "./useSettings";
 import { SettingsPanel } from "./SettingsPanel";
 import QuoteOfDay from "./QuoteOfDay";
 import { useConfetti, getCrossedMilestone } from "./Confetti";
+import { playCheckInSound, playCelebrationSound } from "./sounds";
 import Heatmap from "./Heatmap";
 import MonthlySummary from "./MonthlySummary";
 import { trpc } from "./trpc";
 import { useAuth } from "./useAuth";
 import { Flame, Plus, Trash2, ChevronLeft, ChevronRight, Settings, MoreVertical, Edit2, Archive, ChevronUp, ChevronDown, Palette, TrendingUp, CheckCircle2, Target, Sun, Moon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { storage } from "./storage";
 import { createPortal } from "react-dom";
@@ -25,13 +26,20 @@ interface HabitGoal {
  */
 export default function Dashboard() {
   const { user } = useAuth();
-  const { settings, update: updateSettings } = useSettings();
+  const { settings, update } = useSettings();
   const { fire: fireConfetti } = useConfetti();
   const utils = trpc.useUtils();
   const [newHabitName, setNewHabitName] = useState("");
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [habitGoals, setHabitGoals] = useState<HabitGoal>({});
+  const [habitGoals, setHabitGoals] = useState<HabitGoal>(() => {
+    try {
+      const saved = localStorage.getItem("habit-tracker-goals");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
@@ -53,6 +61,38 @@ export default function Dashboard() {
   ];
   const menuRefs = useRef<{ [key: string | number]: HTMLDivElement | null | { top: number; left: number } }>({});
   const colorPickerRef = useRef<HTMLDivElement | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Forward vertical wheel events to the nearest scrollable ancestor.
+  // Attached to document so it survives habit list re-renders.
+  useEffect(() => {
+    function findScrollableParent(node: Element | null): Element | null {
+      while (node && node !== document.body) {
+        const { overflowY, overflow } = window.getComputedStyle(node);
+        if (/auto|scroll/.test(overflowY + overflow) && node.scrollHeight > node.clientHeight) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return null; // fall back to window
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      const el = tableScrollRef.current;
+      if (!el || !el.contains(e.target as Node)) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // horizontal — let table handle it
+      e.preventDefault();
+      const scrollable = findScrollableParent(el.parentElement);
+      if (scrollable) {
+        scrollable.scrollTop += e.deltaY;
+      } else {
+        window.scrollBy({ top: e.deltaY, behavior: "auto" });
+      }
+    };
+
+    document.addEventListener("wheel", onWheel, { passive: false });
+    return () => document.removeEventListener("wheel", onWheel);
+  }, []);
 
   // Fetch all habits
   const { data: habits = [], isLoading } = trpc.habits.list.useQuery();
@@ -80,17 +120,19 @@ export default function Dashboard() {
       if (!(data as any).checked) return;
       const prevStreak = (data as any).previousStreak ?? 0;
       const newStreak = (data as any).currentStreak ?? 0;
-      // Only fire if streak actually grew and crossed a milestone — prevents
-      // re-triggering when checking an old date while already at a milestone
-      if (newStreak <= prevStreak) return;
-      // Use range check so gap-filling that jumps over a milestone still fires
-      const milestone = getCrossedMilestone(prevStreak, newStreak);
+      // Check milestone first so we play only ONE sound (celebration overrides check-in)
+      const milestone =
+        newStreak > prevStreak ? getCrossedMilestone(prevStreak, newStreak) : null;
       if (milestone) {
         fireConfetti();
+        if (settings.soundEnabled) playCelebrationSound(); // replaces check-in sound
         toast.success(`${milestone.emoji} ${milestone.message}`, {
           duration: 5000,
           style: { fontWeight: "600", fontSize: "15px" },
         });
+      } else {
+        // Regular check-in — play the soft tick
+        if (settings.soundEnabled) playCheckInSound();
       }
     },
     onError: (error) => {
@@ -383,7 +425,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" })}
+              onClick={() => update({ theme: settings.theme === "dark" ? "light" : "dark" })}
               className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
               title={settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
@@ -408,7 +450,7 @@ export default function Dashboard() {
               <div className="p-4">
                 <SettingsPanel
                   settings={settings}
-                  onUpdate={updateSettings}
+                  onUpdate={update}
                   onClose={() => setShowSettings(false)}
                 />
               </div>
@@ -439,7 +481,11 @@ export default function Dashboard() {
         <QuoteOfDay />
 
         {/* Add Habit Form */}
-        <div className="mb-8 flex justify-center">
+        <div className="mb-8 flex items-center">
+          {/* Left spacer — pushes Add button to center */}
+          <div className="flex-1" />
+
+          {/* Center: Add / form */}
           {!isAddingHabit ? (
             <Button onClick={() => setIsAddingHabit(true)} className="ht-accent-btn text-white font-semibold py-2 px-6">
               <Plus className="w-4 h-4 mr-2" />
@@ -453,18 +499,48 @@ export default function Dashboard() {
                 onChange={(e) => setNewHabitName(e.target.value)}
                 autoFocus
               />
-              <Button type="submit" disabled={createMutation.isPending}>
-                Add
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsAddingHabit(false)}
-              >
-                Cancel
-              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>Add</Button>
+              <Button type="button" variant="outline" onClick={() => setIsAddingHabit(false)}>Cancel</Button>
             </form>
           )}
+
+          {/* Right spacer — contains sound toggle flush to the right */}
+          <div className="flex-1 flex justify-end">
+            <button
+              onClick={() => update({ soundEnabled: !settings.soundEnabled })}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all hover:opacity-75 select-none"
+              style={{
+                borderColor: settings.soundEnabled ? "#f97316" : undefined,
+                color: settings.soundEnabled ? "#f97316" : undefined,
+                background: settings.soundEnabled ? "rgba(249,115,22,0.08)" : undefined,
+              }}
+            >
+              {/* Toggle pill */}
+              <span
+                className="relative inline-flex items-center w-8 h-4 rounded-full transition-colors"
+                style={{ background: settings.soundEnabled ? "#f97316" : "#d1d5db" }}
+              >
+                <span
+                  className="absolute w-3 h-3 bg-white rounded-full shadow transition-transform"
+                  style={{ transform: settings.soundEnabled ? "translateX(17px)" : "translateX(2px)" }}
+                />
+              </span>
+              {settings.soundEnabled ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                  <line x1="23" y1="9" x2="17" y2="15"/>
+                  <line x1="17" y1="9" x2="23" y2="15"/>
+                </svg>
+              )}
+              Sound
+            </button>
+          </div>
         </div>
 
         {/* Habits Calendar Grid */}
@@ -476,11 +552,11 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="border rounded-2xl bg-card overflow-hidden">
-            <div className="overflow-x-auto" style={{ overscrollBehavior: 'contain' }}>
+            <div ref={tableScrollRef} className="overflow-x-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b bg-muted">
-                  <th className="px-4 py-3 text-left font-semibold text-sm min-w-40 sticky left-0 bg-card z-10">
+                  <th className="px-4 py-3 text-left font-semibold text-sm min-w-40 sticky left-0 bg-card z-10" style={{ willChange: 'transform' }}>
                     Habit
                   </th>
                   {calendarDates.map((date, idx) => (
@@ -492,10 +568,10 @@ export default function Dashboard() {
                       <div className="text-xs text-muted-foreground">{date.getDate()}</div>
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-center font-semibold text-sm border-l w-24 min-w-24 bg-blue-50 dark:bg-blue-950 sticky right-28 z-10">
+                  <th className="px-4 py-3 text-center font-semibold text-sm border-l w-24 min-w-24 bg-blue-50 dark:bg-blue-950 sticky right-28 z-10" style={{ willChange: 'transform' }}>
                     Goal
                   </th>
-                  <th className="px-4 py-3 text-center font-semibold text-sm border-l w-28 min-w-28 bg-green-50 dark:bg-green-950 sticky right-0 z-10">
+                  <th className="px-4 py-3 text-center font-semibold text-sm border-l w-28 min-w-28 bg-green-50 dark:bg-green-950 sticky right-0 z-10" style={{ willChange: 'transform' }}>
                     Achievement
                   </th>
                 </tr>
@@ -511,7 +587,7 @@ export default function Dashboard() {
                       {/* Habit name cell */}
                       <td
                         className="px-4 py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r"
-                        style={hasColor ? { backgroundColor: habit.color, color: "white" } : undefined}
+                        style={{ willChange: 'transform', ...(hasColor ? { backgroundColor: habit.color, color: "white" } : undefined) }}
                       >
                         <div className="flex-1 flex items-center gap-2 min-w-0">
                           {hasColor && (
@@ -601,7 +677,7 @@ export default function Dashboard() {
                       })}
 
                       {/* Goal */}
-                      <td className="px-4 py-3 text-center border-l bg-blue-50 dark:bg-blue-950 sticky right-28 z-10 w-24 min-w-24">
+                      <td className="px-4 py-3 text-center border-l bg-blue-50 dark:bg-blue-950 sticky right-28 z-10 w-24 min-w-24" style={{ willChange: 'transform' }}>
                         <input
                           type="number"
                           min="0"
@@ -609,7 +685,9 @@ export default function Dashboard() {
                           value={goal}
                           onChange={(e) => {
                             const val = Math.min(parseInt(e.target.value) || 0, calendarDates.length);
-                            setHabitGoals({ ...habitGoals, [habit.id]: val });
+                            const updated = { ...habitGoals, [habit.id]: val };
+                            setHabitGoals(updated);
+                            localStorage.setItem("habit-tracker-goals", JSON.stringify(updated));
                           }}
                           className="w-14 px-2 py-1 border rounded-xl text-center bg-background text-foreground"
                           placeholder="0"
@@ -618,7 +696,7 @@ export default function Dashboard() {
                       </td>
 
                       {/* Achievement */}
-                      <td className="px-4 py-3 text-center border-l font-semibold bg-green-50 dark:bg-green-950 sticky right-0 z-10 w-28 min-w-28">
+                      <td className="px-4 py-3 text-center border-l font-semibold bg-green-50 dark:bg-green-950 sticky right-0 z-10 w-28 min-w-28" style={{ willChange: 'transform' }}>
                         <div className="flex items-center justify-center gap-2">
                           <span>{completionCount}</span>
                           {goal > 0 && (

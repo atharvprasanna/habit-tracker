@@ -1,5 +1,4 @@
-import { useMemo } from "react";
-import { Quote } from "lucide-react";
+import { useMemo, useEffect, useRef } from "react";
 
 const QUOTES = [
   { text: "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", author: "Aristotle" },
@@ -35,6 +34,10 @@ const QUOTES = [
 ];
 
 export default function QuoteOfDay() {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const authorRef = useRef<HTMLDivElement>(null);
+
   const quote = useMemo(() => {
     const now = new Date();
     const dayOfYear = Math.floor(
@@ -43,12 +46,113 @@ export default function QuoteOfDay() {
     return QUOTES[dayOfYear % QUOTES.length];
   }, []);
 
+  // Fade + slide up on mount
+  useEffect(() => {
+    const card = cardRef.current;
+    const text = textRef.current;
+    const author = authorRef.current;
+    if (!card || !text || !author) return;
+
+    // Start hidden
+    card.style.opacity = "0";
+    card.style.transform = "translateY(10px)";
+    text.style.opacity = "0";
+    text.style.transform = "translateY(6px)";
+    author.style.opacity = "0";
+
+    // Card fades in
+    requestAnimationFrame(() => {
+      card.style.transition = "opacity 0.5s ease, transform 0.5s ease";
+      card.style.opacity = "1";
+      card.style.transform = "translateY(0)";
+
+      // Text slides in slightly after
+      setTimeout(() => {
+        text.style.transition = "opacity 0.5s ease, transform 0.5s ease";
+        text.style.opacity = "1";
+        text.style.transform = "translateY(0)";
+      }, 150);
+
+      // Author fades in last
+      setTimeout(() => {
+        author.style.transition = "opacity 0.5s ease";
+        author.style.opacity = "1";
+      }, 350);
+    });
+  }, []);
+
   return (
-    <div className="mb-6 rounded-2xl border bg-card px-5 py-4 flex items-start gap-3">
-      <Quote className="w-4 h-4 mt-0.5 ht-accent-text shrink-0 opacity-70" />
-      <div className="min-w-0">
-        <p className="text-sm italic text-foreground/80 leading-relaxed">"{quote.text}"</p>
-        <p className="text-xs text-muted-foreground mt-1.5 font-medium">— {quote.author}</p>
+    <div
+      ref={cardRef}
+      className="mb-6 relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/30 dark:via-amber-950/20 dark:to-yellow-950/10 border border-orange-100 dark:border-orange-900/40 px-6 py-5 group cursor-default"
+      style={{ transition: "box-shadow 0.3s ease, transform 0.3s ease, border-color 0.3s ease" }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 8px 30px rgba(249,115,22,0.15)";
+        e.currentTarget.style.borderColor = "rgba(249,115,22,0.4)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "none";
+        e.currentTarget.style.borderColor = "";
+      }}
+    >
+      {/* Decorative large quote mark — grows on hover */}
+      <span
+        className="absolute -top-3 -left-1 text-8xl font-serif leading-none select-none pointer-events-none"
+        style={{
+          color: "#f97316",
+          opacity: 0.12,
+          transition: "opacity 0.3s ease, transform 0.3s ease",
+          transformOrigin: "top left",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.opacity = "0.22";
+          (e.currentTarget as HTMLElement).style.transform = "scale(1.15)";
+        }}
+      >
+        "
+      </span>
+
+      {/* Animated left accent bar */}
+      <div
+        className="absolute left-0 top-4 bottom-4 w-[3px] rounded-full"
+        style={{
+          background: "linear-gradient(to bottom, #f97316, #fbbf24)",
+          transform: "scaleY(0)",
+          transformOrigin: "top",
+          transition: "transform 0.35s ease",
+        }}
+        ref={(el) => {
+          if (!el) return;
+          const card = el.closest(".group");
+          if (!card) return;
+          card.addEventListener("mouseenter", () => { el.style.transform = "scaleY(1)"; });
+          card.addEventListener("mouseleave", () => { el.style.transform = "scaleY(0)"; });
+        }}
+      />
+
+      {/* Content */}
+      <div className="relative">
+        <p
+          ref={textRef}
+          className="text-sm md:text-[15px] italic text-foreground/85 leading-relaxed font-medium"
+          style={{ transition: "color 0.3s ease" }}
+        >
+          {quote.text}
+        </p>
+        <div ref={authorRef} className="flex items-center gap-2 mt-3">
+          <div
+            className="h-px flex-1 bg-orange-200 dark:bg-orange-800/50"
+            style={{ transition: "background-color 0.3s ease" }}
+          />
+          <p
+            className="text-xs font-semibold tracking-wide"
+            style={{ color: "#f97316", transition: "letter-spacing 0.3s ease" }}
+          >
+            {quote.author}
+          </p>
+        </div>
       </div>
     </div>
   );
