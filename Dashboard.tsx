@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [editingHabitName, setEditingHabitName] = useState("");
   const [selectedHabitForColor, setSelectedHabitForColor] = useState<number | null>(null);
   const [selectedGraphHabitId, setSelectedGraphHabitId] = useState<number | null>(null);
+  const [heatmapKey, setHeatmapKey] = useState(0);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const colorOptions = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#06b6d4"];
   const menuRefs = useRef<{ [key: string | number]: HTMLDivElement | null | { top: number; left: number } }>({});
@@ -64,6 +65,7 @@ export default function Dashboard() {
   const checkInMutation = trpc.checkins.create.useMutation({
     onSuccess: (_data, variables) => {
       utils.checkins.calendar.invalidate();
+      setHeatmapKey((k) => k + 1); // refresh heatmap immediately
       utils.habits.list.invalidate().then(() => {
         // Check milestone after habits refresh
         const updatedHabits = utils.habits.list.getData() ?? [];
@@ -824,7 +826,7 @@ export default function Dashboard() {
 
         {/* Heatmap */}
         {habits.length > 0 && (
-          <Heatmap habits={habits.map(h => ({ id: h.id, name: h.name, color: h.color || "#f97316" }))} />
+          <Heatmap habits={habits.map(h => ({ id: h.id, name: h.name, color: h.color || "#f97316" }))} refreshKey={heatmapKey} />
         )}
 
         {/* Color Picker Modal */}
