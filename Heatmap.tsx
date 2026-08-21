@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { storage } from "./storage";
 
 interface Props {
@@ -27,13 +28,17 @@ export default function Heatmap({ habits, refreshKey, habitId }: Props) {
   const selectedId = habitId ?? internalId;
   const year = new Date().getFullYear();
 
+  const { data: allCompletions = [] } = useQuery({
+    queryKey: ["completions", "all"],
+    queryFn: () => storage.getCompletions(),
+  });
+
   const completedSet = useMemo<Set<string>>(() => {
     if (!selectedId) return new Set();
-    const completions = storage.getCompletions();
     return new Set(
-      completions.filter((c) => c.habitId === selectedId).map((c) => c.completedDate)
+      allCompletions.filter((c) => c.habitId === selectedId).map((c) => c.completedDate)
     );
-  }, [selectedId, refreshKey]); // refreshKey triggers re-read on every check-in
+  }, [selectedId, refreshKey, allCompletions]);
 
   const { weeks, monthLabels } = useMemo(() => {
     const jan1 = new Date(year, 0, 1);

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Award, CheckCircle2, Download, TrendingDown, TrendingUp } from "lucide-react";
 import { storage } from "./storage";
 import { exportMonthlyPDF } from "./PdfExport";
@@ -17,6 +18,11 @@ interface Props {
 }
 
 export default function MonthlySummary({ habits, currentDate }: Props) {
+  const { data: completions = [] } = useQuery({
+    queryKey: ["completions", "all"],
+    queryFn: () => storage.getCompletions(),
+  });
+
   const { month, year, habitStats, summary } = useMemo(() => {
     const month = currentDate.getMonth();
     const year = currentDate.getFullYear();
@@ -30,9 +36,8 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
     });
     const daysSoFar = calendarDates.filter((d) => d.isPast).length;
 
-    const completions = storage.getCompletions();
-
     let totalCompletions = 0;
+
     let mostConsistent: { name: string; rate: number; color: string } | null = null;
     let leastConsistent: { name: string; rate: number; color: string } | null = null;
 
@@ -57,7 +62,7 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
       habitStats,
       summary: { totalCompletions, mostConsistent, leastConsistent, daysSoFar, daysInMonth },
     };
-  }, [habits, currentDate]);
+  }, [habits, currentDate, completions]);
 
   const monthName = new Date(year, month).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 

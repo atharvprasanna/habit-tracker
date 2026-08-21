@@ -8,14 +8,14 @@ interface Habit {
   longestStreak?: number;
 }
 
-export function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
+export async function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthName = currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   const todayUTC = new Date().toISOString().split("T")[0]; // UTC date key, matches how app stores check-ins
 
-  const completions = storage.getCompletions();
+  const completions = await storage.getCompletions();
   const DAY_ABBR = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
   // Build calendar dates using the same UTC-key approach as Dashboard.tsx

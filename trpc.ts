@@ -1,7 +1,10 @@
-import { storage, Habit, HabitCompletion } from "./storage";
+import { storage } from "./storage";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-// Streak calculation logic
+// ── Streak calculation (runs client-side over fetched completions) ─────────────
+
+import type { HabitCompletion } from "./storage";
+
 function calculateStreak(habitId: number, completions: HabitCompletion[]) {
   const habitCompletions = completions
     .filter((c) => c.habitId === habitId)
@@ -17,7 +20,9 @@ function calculateStreak(habitId: number, completions: HabitCompletion[]) {
   for (let i = 1; i < habitCompletions.length; i++) {
     const prevDate = new Date(habitCompletions[i - 1].completedDate);
     const currDate = new Date(habitCompletions[i].completedDate);
-    const daysDiff = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysDiff = Math.floor(
+      (currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
 
     if (daysDiff === 1) {
       currentStreak++;
@@ -29,17 +34,21 @@ function calculateStreak(habitId: number, completions: HabitCompletion[]) {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const lastCompletion = new Date(habitCompletions[habitCompletions.length - 1].completedDate);
-  const daysSinceLastCompletion = Math.floor((today.getTime() - lastCompletion.getTime()) / (1000 * 60 * 60 * 24));
-
-  const activeCurrentStreak = daysSinceLastCompletion <= 1 ? currentStreak : 0;
+  const lastCompletion = new Date(
+    habitCompletions[habitCompletions.length - 1].completedDate
+  );
+  const daysSinceLast = Math.floor(
+    (today.getTime() - lastCompletion.getTime()) / (1000 * 60 * 60 * 24)
+  );
 
   return {
-    currentStreak: activeCurrentStreak,
+    currentStreak:    daysSinceLast <= 1 ? currentStreak : 0,
     longestStreak,
     lastCompletedDate: habitCompletions[habitCompletions.length - 1].completedDate,
   };
 }
+
+// ── tRPC-shaped hooks ─────────────────────────────────────────────────────────
 
 export const trpc = {
   useUtils: () => {
@@ -47,27 +56,34 @@ export const trpc = {
     return {
       habits: {
         list: {
-          invalidate: () => queryClient.invalidateQueries({ queryKey: ["habits", "list"] }),
+          invalidate: () =>
+            queryClient.invalidateQueries({ queryKey: ["habits", "list"] }),
         },
         get: {
-          invalidate: (input?: { habitId: number }) => 
-            queryClient.invalidateQueries({ queryKey: input?.habitId ? ["habits", "get", input.habitId] : ["habits", "get"] }),
+          invalidate: (input?: { habitId: number }) =>
+            queryClient.invalidateQueries({
+              queryKey: input?.habitId
+                ? ["habits", "get", input.habitId]
+                : ["habits", "get"],
+            }),
         },
       },
       checkins: {
         calendar: {
           invalidate: (input?: { habitId: number }) =>
-            queryClient.invalidateQueries({ queryKey: input?.habitId ? ["checkins", "calendar", input.habitId] : ["checkins", "calendar"] }),
-        }
+            queryClient.invalidateQueries({
+              queryKey: input?.habitId
+                ? ["checkins", "calendar", input.habitId]
+                : ["checkins", "calendar"],
+            }),
+        },
       },
       auth: {
-        me: {
-          setData: () => {},
-          invalidate: () => {},
-        }
-      }
+        me: { setData: () => {}, invalidate: () => {} },
+      },
     };
   },
+
   auth: {
     me: {
       useQuery: () => ({
@@ -84,178 +100,190 @@ export const trpc = {
       }),
     },
   },
+
   habits: {
     list: {
-      useQuery: () => useQuery({
-        queryKey: ["habits", "list"],
-        queryFn: async () => {
-          const habits = storage.getHabits();
-          const completions = storage.getCompletions();
-          return habits.map((h) => {
-            const streak = calculateStreak(h.id, completions);
-            return { ...h, ...streak };
-          });
-        },
-      }),
+      useQuery: () =>
+        useQuery({
+          queryKey: ["habits", "list"],
+          queryFn: async () => {
+            const [habits, completions] = await Promise.all([
+              storage.getHabits(),
+              storage.getCompletions(),
+            ]);
+            return habits.map((h) => ({
+              ...h,
+              ...calculateStreak(h.id, completions),
+            }));
+          },
+        }),
     },
-    get: {
-      useQuery: (input: { habitId: number }) => useQuery({
-        queryKey: ["habits", "get", input.habitId],
-        queryFn: async () => {
-          const habits = storage.getHabits();
-          const habit = habits.find((h) => h.id === input.habitId);
-          if (!habit) throw new Error("Habit not found");
-          
-          const completions = storage.getCompletions();
-          const streak = calculateStreak(habit.id, completions);
-          const habitCompletions = completions
-            .filter((c) => c.habitId === habit.id)
-            .map((c) => c.completedDate);
 
-          return { ...habit, ...streak, completions: habitCompletions };
-        },
-      }),
+    get: {
+      useQuery: (input: { habitId: number }) =>
+        useQuery({
+          queryKey: ["habits", "get", input.habitId],
+          queryFn: async () => {
+            const [habits, completions] = await Promise.all([
+              storage.getHabits(),
+              storage.getCompletions(),
+            ]);
+            const habit = habits.find((h) => h.id === input.habitId);
+            if (!habit) throw new Error("Habit not found");
+            const streak = calculateStreak(habit.id, completions);
+            const habitCompletions = completions
+              .filter((c) => c.habitId === habit.id)
+              .map((c) => c.completedDate);
+            return { ...habit, ...streak, completions: habitCompletions };
+          },
+        }),
     },
+
     create: {
-      useMutation: (options: any) => useMutation({
-        mutationFn: async (input: any) => {
-          const habits = storage.getHabits();
-          const newHabit: Habit = {
-            id: Date.now(),
-            name: input.name,
-            description: input.description,
-            color: input.color || "#3b82f6",
-            icon: input.icon || "circle",
-            displayOrder: habits.length,
-            isActive: true,
-            createdAt: new Date().toISOString(),
-          };
-          storage.saveHabits([...habits, newHabit]);
-          return newHabit;
-        },
-        ...options,
-      }),
+      useMutation: (options: any) =>
+        useMutation({
+          mutationFn: async (input: any) => {
+            const habits = await storage.getHabits();
+            return storage.createHabit({
+              name:         input.name,
+              description:  input.description,
+              color:        input.color || "#3b82f6",
+              icon:         input.icon  || "circle",
+              displayOrder: habits.length,
+            });
+          },
+          ...options,
+        }),
     },
+
     update: {
-      useMutation: (options: any) => useMutation({
-        mutationFn: async (input: any) => {
-          const habits = storage.getHabits();
-          const index = habits.findIndex((h) => h.id === (input.habitId || input.id));
-          if (index === -1) throw new Error("Habit not found");
-          
-          habits[index] = { ...habits[index], ...input };
-          storage.saveHabits(habits);
-          return habits[index];
-        },
-        ...options,
-      }),
+      useMutation: (options: any) =>
+        useMutation({
+          mutationFn: async (input: any) => {
+            const habitId = input.habitId ?? input.id;
+            return storage.updateHabit(habitId, {
+              name:        input.name,
+              description: input.description,
+              color:       input.color,
+              icon:        input.icon,
+            });
+          },
+          ...options,
+        }),
     },
+
     updateColor: {
-      useMutation: (options: any) => useMutation({
-        mutationFn: async (input: { habitId: number; color: string }) => {
-          const habits = storage.getHabits();
-          const index = habits.findIndex((h) => h.id === input.habitId);
-          if (index === -1) throw new Error("Habit not found");
-          
-          habits[index] = { ...habits[index], color: input.color };
-          storage.saveHabits(habits);
-          return habits[index];
-        },
-        ...options,
-      }),
+      useMutation: (options: any) =>
+        useMutation({
+          mutationFn: async (input: { habitId: number; color: string }) =>
+            storage.updateHabit(input.habitId, { color: input.color }),
+          ...options,
+        }),
     },
+
     delete: {
-      useMutation: (options: any) => useMutation({
-        mutationFn: async (input: { habitId: number }) => {
-          const habits = storage.getHabits();
-          storage.saveHabits(habits.filter((h) => h.id !== input.habitId));
-          const completions = storage.getCompletions();
-          storage.saveCompletions(completions.filter((c) => c.habitId !== input.habitId));
-          return { success: true };
-        },
-        ...options,
-      }),
+      useMutation: (options: any) =>
+        useMutation({
+          mutationFn: async (input: { habitId: number }) =>
+            storage.deleteHabit(input.habitId),
+          ...options,
+        }),
     },
+
     reorder: {
-      useMutation: (options: any) => useMutation({
-        mutationFn: async (input: { habitIds: number[] }) => {
-          const habits = storage.getHabits();
-          const reordered = input.habitIds.map((id, index) => {
-            const habit = habits.find((h) => h.id === id);
-            return { ...habit!, displayOrder: index };
-          });
-          storage.saveHabits(reordered);
-          return { success: true };
-        },
-        ...options,
-      }),
+      useMutation: (options: any) =>
+        useMutation({
+          mutationFn: async (input: { habitIds: number[] }) =>
+            storage.reorderHabits(input.habitIds),
+          ...options,
+        }),
     },
   },
+
   checkins: {
     create: {
-      useMutation: (options: any) => useMutation({
-        mutationFn: async (input: { habitId: number; date: string }) => {
-          const completions = storage.getCompletions();
-          const existingIndex = completions.findIndex(
-            (c) => c.habitId === input.habitId && c.completedDate === input.date
-          );
+      useMutation: (options: any) =>
+        useMutation({
+          mutationFn: async (input: { habitId: number; date: string }) => {
+            // Fetch completions, compute before-streak, toggle, compute after-streak
+            const completions = await storage.getCompletions();
+            const existingIndex = completions.findIndex(
+              (c) => c.habitId === input.habitId && c.completedDate === input.date
+            );
 
-          const wasChecked = existingIndex === -1; // true = adding, false = removing
-          // Capture streak BEFORE the change so we can detect milestone crossings
-          const streakBefore = calculateStreak(input.habitId, completions);
-          if (existingIndex > -1) {
-            completions.splice(existingIndex, 1);
-          } else {
-            completions.push({
-              id: Date.now(),
-              habitId: input.habitId,
-              completedDate: input.date,
-              completedAt: new Date().toISOString(),
-            });
-          }
-          storage.saveCompletions(completions);
-          const streakAfter = calculateStreak(input.habitId, completions);
-          return {
-            toggled: true,
-            checked: wasChecked,
-            previousStreak: streakBefore.currentStreak,
-            ...streakAfter,
-          };
-        },
-        ...options,
-      }),
+            const wasChecked  = existingIndex === -1;
+            const streakBefore = calculateStreak(input.habitId, completions);
+
+            if (existingIndex > -1) {
+              await storage.removeCompletion(input.habitId, input.date);
+              completions.splice(existingIndex, 1);
+            } else {
+              const newCompletion = await storage.addCompletion(
+                input.habitId,
+                input.date
+              );
+              completions.push(newCompletion);
+            }
+
+            const streakAfter = calculateStreak(input.habitId, completions);
+            return {
+              toggled:        true,
+              checked:        wasChecked,
+              previousStreak: streakBefore.currentStreak,
+              ...streakAfter,
+            };
+          },
+          ...options,
+        }),
     },
+
     calendar: {
-      useQuery: (input: { habitId: number; days?: number; startDate?: string; endDate?: string }) => useQuery({
-        queryKey: ["checkins", "calendar", input.habitId, input.days, input.startDate, input.endDate],
-        queryFn: async () => {
-          const completions = storage.getCompletions();
-          const habitCompletions = completions.filter((c) => c.habitId === input.habitId);
-          
-          const endDate = input.endDate ? new Date(input.endDate) : new Date();
-          const startDate = input.startDate ? new Date(input.startDate) : new Date();
-          if (!input.startDate) startDate.setDate(endDate.getDate() - (input.days || 30));
-          
-          endDate.setHours(0, 0, 0, 0);
-          startDate.setHours(0, 0, 0, 0);
+      useQuery: (input: {
+        habitId: number;
+        days?: number;
+        startDate?: string;
+        endDate?: string;
+      }) =>
+        useQuery({
+          queryKey: [
+            "checkins",
+            "calendar",
+            input.habitId,
+            input.days,
+            input.startDate,
+            input.endDate,
+          ],
+          queryFn: async () => {
+            const completions = await storage.getCompletions();
+            const habitCompletions = completions.filter(
+              (c) => c.habitId === input.habitId
+            );
 
-          const completedDates = new Set(habitCompletions.map((c) => c.completedDate));
-          const calendar = [];
-          const current = new Date(startDate);
-          while (current <= endDate) {
-            const dateStr = current.toISOString().split("T")[0];
-            calendar.push({ date: dateStr, completed: completedDates.has(dateStr) });
-            current.setDate(current.getDate() + 1);
-          }
+            const endDate   = input.endDate   ? new Date(input.endDate)   : new Date();
+            const startDate = input.startDate ? new Date(input.startDate) : new Date();
+            if (!input.startDate)
+              startDate.setDate(endDate.getDate() - (input.days ?? 30));
 
-          const streak = calculateStreak(input.habitId, completions);
-          return {
-            calendar,
-            ...streak,
-            completionCount: habitCompletions.length,
-          };
-        },
-      }),
+            endDate.setHours(0, 0, 0, 0);
+            startDate.setHours(0, 0, 0, 0);
+
+            const completedDates = new Set(habitCompletions.map((c) => c.completedDate));
+            const calendar: { date: string; completed: boolean }[] = [];
+            const current = new Date(startDate);
+            while (current <= endDate) {
+              const dateStr = current.toISOString().split("T")[0];
+              calendar.push({ date: dateStr, completed: completedDates.has(dateStr) });
+              current.setDate(current.getDate() + 1);
+            }
+
+            const streak = calculateStreak(input.habitId, completions);
+            return {
+              calendar,
+              ...streak,
+              completionCount: habitCompletions.length,
+            };
+          },
+        }),
     },
   },
 };

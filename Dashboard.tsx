@@ -11,7 +11,7 @@ import { useAuth } from "./useAuth";
 import { Flame, Plus, Trash2, ChevronLeft, ChevronRight, Settings, MoreVertical, Edit2, Archive, ChevronUp, ChevronDown, Palette, TrendingUp, CheckCircle2, Target, Sun, Moon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { storage } from "./storage";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ export default function Dashboard() {
   const { settings, update } = useSettings();
   const { fire: fireConfetti } = useConfetti();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const [newHabitName, setNewHabitName] = useState("");
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -115,6 +116,7 @@ export default function Dashboard() {
     onSuccess: (data) => {
       utils.checkins.calendar.invalidate();
       utils.habits.list.invalidate();
+      queryClient.invalidateQueries({ queryKey: ["completions", "all"] });
       setHeatmapKey((k) => k + 1);
       // Only celebrate when checking IN (not when unchecking)
       if (!(data as any).checked) return;
@@ -308,7 +310,7 @@ export default function Dashboard() {
     queries: habits.map((habit) => ({
       queryKey: ["checkins", "calendar", habit.id, startDateStr, endDateStr],
       queryFn: async () => {
-        const completions = storage.getCompletions();
+        const completions = await storage.getCompletions();
         const habitCompletions = completions.filter((c) => c.habitId === habit.id);
         const completedDates = new Set(habitCompletions.map((c) => c.completedDate));
 
