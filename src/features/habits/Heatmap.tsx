@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { toDateKey } from "../../lib/dates";
 import { useCompletions } from "./useCompletions";
+import YearMonthCalendars from "./YearMonthCalendars";
 
 interface Props {
   habits: { id: number; name: string; color: string }[];
@@ -31,6 +32,12 @@ export default function Heatmap({ habits, refreshKey, habitId }: Props) {
       allCompletions.filter((c) => c.habitId === selectedId).map((c) => c.completedDate)
     );
   }, [selectedId, refreshKey, allCompletions]);
+
+  const daysInYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 366 : 365;
+  const yearDone = useMemo(
+    () => [...completedSet].filter((k) => k.startsWith(`${year}-`)).length,
+    [completedSet, year]
+  );
 
   const { weeks, monthLabels } = useMemo(() => {
     const jan1 = new Date(year, 0, 1);
@@ -115,7 +122,20 @@ export default function Heatmap({ habits, refreshKey, habitId }: Props) {
         </div>
         )
       ) : (
-        <div className="w-full">
+        <>
+        {/* Phones: twelve compact month calendars (fits the screen, no scrolling) */}
+        <div className="md:hidden">
+          <YearMonthCalendars
+            year={year}
+            completedSet={completedSet}
+            accentColor={accentColor}
+            yearDone={yearDone}
+            daysInYear={daysInYear}
+          />
+        </div>
+
+        {/* Tablet / desktop: contribution-style year grid */}
+        <div className="hidden w-full md:block">
           {/* Month label row — proportional flex widths based on week count */}
           <div className="flex" style={{ marginLeft: DAY_COL_W + GAP }}>
             {monthLabels.map(({ month, col }, i) => {
@@ -188,6 +208,9 @@ export default function Heatmap({ habits, refreshKey, habitId }: Props) {
 
           {/* Legend */}
           <div className="flex items-center gap-3 mt-3 justify-end">
+            <div className="mr-auto text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground tabular-nums">{yearDone}</span> out of {daysInYear} days in {year}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <div className="rounded-[2px]" style={{ width: CELL, height: CELL, backgroundColor: accentColor }} />
               Completed
@@ -198,6 +221,7 @@ export default function Heatmap({ habits, refreshKey, habitId }: Props) {
             </div>
           </div>
         </div>
+        </>
       )}
 
       {tooltip && (

@@ -227,3 +227,27 @@ html {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Nudging arrow for the "swipe to view the full month" hint */
+@keyframes ht-nudge {
+  0%, 100% { transform: translateX(0); opacity: 0.6; }
+  50%      { transform: translateX(7px); opacity: 1; }
+}
+.ht-nudge {
+  animation: ht-nudge 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ht-nudge { animation: none; }
+}
+
+/* Bottom sheet slide-up (Help) */
+@keyframes ht-sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.ht-sheet-up {
+  animation: ht-sheet-up 0.25s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ht-sheet-up { animation: none; }
+}

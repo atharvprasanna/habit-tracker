@@ -1,4 +1,4 @@
-import { BarChart3, Home, Plus, Settings } from "lucide-react";
+import { BarChart3, CircleHelp, Home, Plus, Settings } from "lucide-react";
 import { vibrate } from "../../lib/haptics";
 
 interface Props {
@@ -6,10 +6,11 @@ interface Props {
   onAdd: () => void;
   onInsights: () => void;
   onSettings: () => void;
+  onHelp: () => void;
 }
 
 /** Fixed bottom tab bar for phones. Hidden from the `md` breakpoint up. */
-export default function BottomNav({ onHabits, onAdd, onInsights, onSettings }: Props) {
+export default function BottomNav({ onHabits, onAdd, onInsights, onSettings, onHelp }: Props) {
   const tap = (fn: () => void) => () => {
     vibrate(8);
     fn();
@@ -49,8 +50,10 @@ export default function BottomNav({ onHabits, onAdd, onInsights, onSettings }: P
           <Settings className="h-5 w-5" />
           Settings
         </button>
-        {/* Spacer keeps the four tabs visually balanced around the center button */}
-        <div className="flex-1" aria-hidden />
+        <button className={tabClass} onClick={tap(onHelp)}>
+          <CircleHelp className="h-5 w-5" />
+          Help
+        </button>
       </div>
     </nav>
   );

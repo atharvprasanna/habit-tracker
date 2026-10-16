@@ -61,7 +61,7 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
     };
   }, [habits, currentDate, completions]);
 
-  const monthName = new Date(year, month).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthLong = new Date(year, month).toLocaleDateString("en-US", { month: "long" });
 
   if (habits.length === 0) return null;
 
@@ -70,8 +70,13 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
       {/* Header */}
       <div className="flex items-center gap-2 mb-5">
         <Award className="w-5 h-5 text-amber-500" />
-        <h2 className="text-base font-semibold">Monthly Summary</h2>
-        <span className="text-sm text-muted-foreground ml-1">— {monthName}</span>
+        <h2 className="text-base font-semibold leading-tight">
+          <span className="block md:inline">Monthly</span>{" "}
+          <span className="block md:inline">Summary</span>
+        </h2>
+        <span className="ml-1 flex-1 whitespace-nowrap text-center text-sm font-bold md:flex-none md:text-left">
+          {monthLong} {year}
+        </span>
         <button
           onClick={() => exportMonthlyPDF(habits as any, currentDate)}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"

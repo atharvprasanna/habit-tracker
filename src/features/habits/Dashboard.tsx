@@ -15,6 +15,8 @@ import { calculateStreak } from "../../lib/trpc";
 import { vibrate, HAPTIC_CHECK, HAPTIC_MILESTONE } from "../../lib/haptics";
 import { useCompletions } from "./useCompletions";
 import { useCheckIn } from "./useCheckIn";
+import HorizontalScroll from "../../components/ui/HorizontalScroll";
+import HelpSheet from "../../components/layout/HelpSheet";
 import BottomNav from "../../components/layout/BottomNav";
 import MobileAccountSection from "../../components/layout/MobileAccountSection";
 import { createPortal } from "react-dom";
@@ -46,6 +48,7 @@ export default function Dashboard() {
     }
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [editingHabitId, setEditingHabitId] = useState<number | null>(null);
@@ -587,7 +590,13 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="border rounded-2xl bg-card overflow-hidden">
-            <div ref={tableScrollRef} className="overflow-x-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
+            <HorizontalScroll
+              ref={tableScrollRef}
+              storageKey="habit-tracker-scroll-hint-seen"
+              label="Swipe to view the full month"
+              accentColor={settings.accentColor}
+              style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+            >
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b bg-muted">
@@ -619,21 +628,30 @@ export default function Dashboard() {
 
                   return (
                     <tr key={habit.id} className="border-b hover:bg-muted/30">
-                      {/* Habit name cell */}
+                      {/* Habit name cell: plain background, colour shown as a tappable dot */}
                       <td
-                        className="px-2 md:px-4 py-2 md:py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r"
-                        style={{ willChange: 'transform', ...(hasColor ? { backgroundColor: habit.color, color: "white" } : undefined) }}
+                        className="px-2 md:px-4 py-2 md:py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r bg-card"
+                        style={{ willChange: 'transform' }}
                       >
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                          {hasColor && (
-                            <span className="inline-block w-2 h-2 rounded-full bg-white/50 shrink-0" />
-                          )}
+                        <div className="flex-1 flex items-center gap-1.5 md:gap-2 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => handleShowColorPicker(habit.id)}
+                            className="group -m-1.5 p-1.5 shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Change colour"
+                            aria-label={`Change colour of ${habit.name}`}
+                          >
+                            <span
+                              className={`block w-3.5 h-3.5 md:w-4 md:h-4 rounded-full transition-transform duration-150 group-hover:scale-125 group-active:scale-90 ${hasColor ? "" : "border-2 border-dashed border-muted-foreground/50"}`}
+                              style={hasColor ? { backgroundColor: habit.color, boxShadow: `0 0 0 3px ${habit.color}26` } : undefined}
+                            />
+                          </button>
                           <span className="text-[13px] md:text-[15px] leading-tight break-words">{habit.name}</span>
                         </div>
                         <div className="relative shrink-0">
                           <button
                             onClick={(e) => toggleHabitMenu(e, habit.id)}
-                            className={`p-1 rounded hover:bg-black/10 ${hasColor ? "text-white/80" : "text-muted-foreground"}`}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground"
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
@@ -702,7 +720,7 @@ export default function Dashboard() {
                 })}
               </tbody>
             </table>
-            </div>
+            </HorizontalScroll>
           </div>
         )}
 
@@ -818,7 +836,11 @@ export default function Dashboard() {
 
                 {/* Bar chart */}
                 <div className="text-xs text-muted-foreground mb-3">{formatDateHeader()}</div>
-                <div className="overflow-x-auto">
+                <HorizontalScroll
+                  storageKey="habit-tracker-chart-hint-seen"
+                  label="Swipe to see every day"
+                  accentColor={settings.accentColor}
+                >
                 <div style={{ minWidth: Math.max(graphChartData.length * 28, 400) }}>
                 <ResponsiveContainer width="100%" height={160}>
                   <BarChart data={graphChartData} margin={{ top: 4, right: 8, left: 8, bottom: 0 }} barCategoryGap="20%">
@@ -857,7 +879,7 @@ export default function Dashboard() {
                   </BarChart>
                 </ResponsiveContainer>
                 </div>
-                </div>
+                </HorizontalScroll>
 
                 {/* Legend */}
                 <div className="flex gap-4 mt-3">
@@ -997,7 +1019,9 @@ export default function Dashboard() {
         onAdd={() => { setIsAddingHabit(true); scrollToId("add-habit"); }}
         onInsights={() => scrollToId("insights")}
         onSettings={() => setShowSettings(true)}
+        onHelp={() => setShowHelp(true)}
       />
+      <HelpSheet open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 }
