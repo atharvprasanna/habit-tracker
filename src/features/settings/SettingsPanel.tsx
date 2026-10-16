@@ -1,6 +1,7 @@
 import { Download } from "lucide-react";
 import { AppSettings, ACCENT_PRESETS, FontChoice } from "./useSettings";
 import { storage } from "../../lib/storage";
+import { todayKey } from "../../lib/dates";
 
 interface Props {
   settings: AppSettings;
@@ -16,9 +17,11 @@ const FONT_OPTIONS: { value: FontChoice; label: string; family: string }[] = [
 
 export function SettingsPanel({ settings, onUpdate, onClose }: Props) {
 
-  const handleExportCSV = () => {
-    const habits = storage.getHabits();
-    const completions = storage.getCompletions();
+  const handleExportCSV = async () => {
+    const [habits, completions] = await Promise.all([
+      storage.getHabits(),
+      storage.getCompletions(),
+    ]);
 
     const rows: string[] = ["Habit Name,Date,Status"];
     habits.forEach((habit) => {
@@ -36,7 +39,7 @@ export function SettingsPanel({ settings, onUpdate, onClose }: Props) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `habits-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `habits-${todayKey()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

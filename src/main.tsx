@@ -9,6 +9,13 @@ applySettings(loadSettings());
 
 const queryClient = new QueryClient();
 
+// Register the service worker (production only) so the app can be installed to the home screen
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <App />

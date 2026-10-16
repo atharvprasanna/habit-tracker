@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Award, CheckCircle2, Download, TrendingDown, TrendingUp } from "lucide-react";
-import { storage } from "../../lib/storage";
+import { toDateKey, todayKey } from "../../lib/dates";
+import { useCompletions } from "./useCompletions";
 import { exportMonthlyPDF } from "./PdfExport";
 
 interface Habit {
@@ -18,21 +18,18 @@ interface Props {
 }
 
 export default function MonthlySummary({ habits, currentDate }: Props) {
-  const { data: completions = [] } = useQuery({
-    queryKey: ["completions", "all"],
-    queryFn: () => storage.getCompletions(),
-  });
+  const { data: completions = [] } = useCompletions();
 
   const { month, year, habitStats, summary } = useMemo(() => {
     const month = currentDate.getMonth();
     const year = currentDate.getFullYear();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    // Use the same UTC date-key approach as Dashboard.tsx so counts match
-    const todayUTC = new Date().toISOString().split("T")[0];
+    // Local calendar-date keys, same as the dashboard grid
+    const today = todayKey();
     const calendarDates = Array.from({ length: daysInMonth }, (_, i) => {
-      const utcKey = new Date(year, month, i + 1).toISOString().split("T")[0];
-      return { utcKey, isPast: utcKey <= todayUTC };
+      const dayKey = toDateKey(new Date(year, month, i + 1));
+      return { dayKey, isPast: dayKey <= today };
     });
     const daysSoFar = calendarDates.filter((d) => d.isPast).length;
 
@@ -43,8 +40,8 @@ export default function MonthlySummary({ habits, currentDate }: Props) {
 
     const habitStats = habits.map((habit) => {
       const count = calendarDates.filter(
-        ({ utcKey, isPast }) =>
-          isPast && completions.some((c) => c.habitId === habit.id && c.completedDate === utcKey)
+        ({ dayKey, isPast }) =>
+          isPast && completions.some((c) => c.habitId === habit.id && c.completedDate === dayKey)
       ).length;
       const rate = daysSoFar > 0 ? count / daysSoFar : 0;
       totalCompletions += count;

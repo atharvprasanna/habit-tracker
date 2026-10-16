@@ -1,4 +1,5 @@
 import { storage } from "../../lib/storage";
+import { toDateKey, todayKey } from "../../lib/dates";
 
 interface Habit {
   id: number;
@@ -13,25 +14,24 @@ export async function exportMonthlyPDF(habits: Habit[], currentDate: Date) {
   const year = currentDate.getFullYear();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthName = currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  const todayUTC = new Date().toISOString().split("T")[0]; // UTC date key, matches how app stores check-ins
+  const today = todayKey(); // local calendar date, matches how check-ins are stored
 
   const completions = await storage.getCompletions();
   const DAY_ABBR = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-  // Build calendar dates using the same UTC-key approach as Dashboard.tsx
-  // Each Date is local midnight; toISOString() gives the UTC key the app stores
-  const calendarDates: { localDate: Date; utcKey: string; isPast: boolean }[] = [];
+  // Build calendar dates using local date keys, same as the dashboard grid
+  const calendarDates: { localDate: Date; dayKey: string; isPast: boolean }[] = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const localDate = new Date(year, month, d); // local midnight
-    const utcKey = localDate.toISOString().split("T")[0]; // UTC date string, same as Dashboard
-    calendarDates.push({ localDate, utcKey, isPast: utcKey <= todayUTC });
+    const dayKey = toDateKey(localDate);
+    calendarDates.push({ localDate, dayKey, isPast: dayKey <= today });
   }
   const daysSoFar = calendarDates.filter((d) => d.isPast).length;
 
-  // Build per-habit stats using UTC keys to match stored completions
+  // Build per-habit stats using date keys to match stored completions
   const habitStats = habits.map((habit) => {
-    const days: boolean[] = calendarDates.map(({ utcKey }) =>
-      completions.some((c) => c.habitId === habit.id && c.completedDate === utcKey)
+    const days: boolean[] = calendarDates.map(({ dayKey }) =>
+      completions.some((c) => c.habitId === habit.id && c.completedDate === dayKey)
     );
     const completedCount = calendarDates.filter(({ isPast }, i) => isPast && days[i]).length;
     const rate = daysSoFar > 0 ? Math.round((completedCount / daysSoFar) * 100) : 0;

@@ -1,11 +1,12 @@
 import { storage } from "./storage";
+import { dayDiff, parseDateKey, toDateKey, todayKey } from "./dates";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 // ── Streak calculation (runs client-side over fetched completions) ─────────────
 
 import type { HabitCompletion } from "./storage";
 
-function calculateStreak(habitId: number, completions: HabitCompletion[]) {
+export function calculateStreak(habitId: number, completions: HabitCompletion[]) {
   const habitCompletions = completions
     .filter((c) => c.habitId === habitId)
     .sort((a, b) => a.completedDate.localeCompare(b.completedDate));
@@ -18,10 +19,9 @@ function calculateStreak(habitId: number, completions: HabitCompletion[]) {
   let currentStreak = 1;
 
   for (let i = 1; i < habitCompletions.length; i++) {
-    const prevDate = new Date(habitCompletions[i - 1].completedDate);
-    const currDate = new Date(habitCompletions[i].completedDate);
-    const daysDiff = Math.floor(
-      (currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)
+    const daysDiff = dayDiff(
+      habitCompletions[i - 1].completedDate,
+      habitCompletions[i].completedDate
     );
 
     if (daysDiff === 1) {
@@ -32,13 +32,9 @@ function calculateStreak(habitId: number, completions: HabitCompletion[]) {
     }
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const lastCompletion = new Date(
-    habitCompletions[habitCompletions.length - 1].completedDate
-  );
-  const daysSinceLast = Math.floor(
-    (today.getTime() - lastCompletion.getTime()) / (1000 * 60 * 60 * 24)
+  const daysSinceLast = dayDiff(
+    habitCompletions[habitCompletions.length - 1].completedDate,
+    todayKey()
   );
 
   return {
@@ -106,16 +102,8 @@ export const trpc = {
       useQuery: () =>
         useQuery({
           queryKey: ["habits", "list"],
-          queryFn: async () => {
-            const [habits, completions] = await Promise.all([
-              storage.getHabits(),
-              storage.getCompletions(),
-            ]);
-            return habits.map((h) => ({
-              ...h,
-              ...calculateStreak(h.id, completions),
-            }));
-          },
+          // Habits only — streaks are derived client-side from the shared completions cache
+          queryFn: () => storage.getHabits(),
         }),
     },
 
@@ -259,8 +247,8 @@ export const trpc = {
               (c) => c.habitId === input.habitId
             );
 
-            const endDate   = input.endDate   ? new Date(input.endDate)   : new Date();
-            const startDate = input.startDate ? new Date(input.startDate) : new Date();
+            const endDate   = input.endDate   ? parseDateKey(input.endDate)   : new Date();
+            const startDate = input.startDate ? parseDateKey(input.startDate) : new Date();
             if (!input.startDate)
               startDate.setDate(endDate.getDate() - (input.days ?? 30));
 
@@ -271,7 +259,7 @@ export const trpc = {
             const calendar: { date: string; completed: boolean }[] = [];
             const current = new Date(startDate);
             while (current <= endDate) {
-              const dateStr = current.toISOString().split("T")[0];
+              const dateStr = toDateKey(current);
               calendar.push({ date: dateStr, completed: completedDates.has(dateStr) });
               current.setDate(current.getDate() + 1);
             }

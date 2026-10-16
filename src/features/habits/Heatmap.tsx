@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { storage } from "../../lib/storage";
+import { toDateKey } from "../../lib/dates";
+import { useCompletions } from "./useCompletions";
 
 interface Props {
   habits: { id: number; name: string; color: string }[];
@@ -18,20 +18,12 @@ const GAP  = 2;    // px — gap between cells
 const WEEK_W = CELL + GAP; // 13px per week column
 const DAY_COL_W = 28; // px — width of the day-label column on the left
 
-// Format a local date as YYYY-MM-DD (no UTC conversion)
-function localDateStr(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 export default function Heatmap({ habits, refreshKey, habitId }: Props) {
   const [internalId, setInternalId] = useState<number | null>(null);
   const selectedId = habitId ?? internalId;
   const year = new Date().getFullYear();
 
-  const { data: allCompletions = [] } = useQuery({
-    queryKey: ["completions", "all"],
-    queryFn: () => storage.getCompletions(),
-  });
+  const { data: allCompletions = [] } = useCompletions();
 
   const completedSet = useMemo<Set<string>>(() => {
     if (!selectedId) return new Set();
@@ -56,7 +48,7 @@ export default function Heatmap({ habits, refreshKey, habitId }: Props) {
 
     const cursor = new Date(year, 0, 1);
     while (cursor.getFullYear() === year) {
-      const dateStr = localDateStr(cursor);          // ← local time, no UTC shift
+      const dateStr = toDateKey(cursor);
       const isFuture = cursor > today;
       week.push({ dateStr, completed: completedSet.has(dateStr), isFuture });
       if (week.length === 7) { cells.push(week); week = []; }

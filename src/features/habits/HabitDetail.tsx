@@ -1,6 +1,7 @@
 import { useAuth } from "../auth/useAuth";
 import { Button, Card } from "../../components/ui/ui-shims";
 import { trpc } from "../../lib/trpc";
+import { todayKey } from "../../lib/dates";
 import { ArrowLeft, Flame, Calendar } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -130,7 +131,7 @@ export default function HabitDetail({ params }: { params: { habitId: string } })
                 </div>
               ))}
               {calendar.calendar.map((day) => {
-                const isToday = new Date().toISOString().split("T")[0] === day.date;
+                const isToday = todayKey() === day.date;
                 return (
                   <button
                     key={day.date}
@@ -155,8 +156,7 @@ export default function HabitDetail({ params }: { params: { habitId: string } })
         <div className="mt-8">
           <Button
             onClick={() => {
-              const today = new Date().toISOString().split("T")[0];
-              handleCheckIn(today);
+              handleCheckIn(todayKey());
             }}
             disabled={checkInMutation.isPending}
             size="lg"

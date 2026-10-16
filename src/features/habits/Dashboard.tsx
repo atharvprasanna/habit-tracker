@@ -11,10 +11,15 @@ import { useAuth } from "../auth/useAuth";
 import { Flame, Plus, Trash2, ChevronLeft, ChevronRight, Settings, MoreVertical, Edit2, Archive, ChevronUp, ChevronDown, Palette, TrendingUp, CheckCircle2, Target, Sun, Moon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { storage } from "../../lib/storage";
+import { calculateStreak } from "../../lib/trpc";
+import { vibrate, HAPTIC_CHECK, HAPTIC_MILESTONE } from "../../lib/haptics";
+import { useCompletions } from "./useCompletions";
+import { useCheckIn } from "./useCheckIn";
+import HabitCardList from "./HabitCardList";
+import BottomNav from "../../components/layout/BottomNav";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { toDateKey, todayKey as getTodayKey } from "../../lib/dates";
 
 interface HabitGoal {
   [habitId: number]: number;
@@ -29,7 +34,17 @@ export default function Dashboard() {
   const { settings, update } = useSettings();
   const { fire: fireConfetti } = useConfetti();
   const utils = trpc.useUtils();
-  const queryClient = useQueryClient();
+  const [viewMode, setViewMode] = useState<"cards" | "grid">(() => {
+    try {
+      const saved = localStorage.getItem("habit-tracker-view");
+      if (saved === "cards" || saved === "grid") return saved;
+    } catch { /* ignore */ }
+    return typeof window !== "undefined" && window.innerWidth < 768 ? "cards" : "grid";
+  });
+  const changeViewMode = (mode: "cards" | "grid") => {
+    setViewMode(mode);
+    try { localStorage.setItem("habit-tracker-view", mode); } catch { /* ignore */ }
+  };
   const [newHabitName, setNewHabitName] = useState("");
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -96,7 +111,14 @@ export default function Dashboard() {
   }, []);
 
   // Fetch all habits
-  const { data: habits = [], isLoading } = trpc.habits.list.useQuery();
+  const { data: rawHabits = [], isLoading } = trpc.habits.list.useQuery();
+
+  // All completions live in one shared cache; streaks and the grid are derived from it
+  const { data: completions = [] } = useCompletions();
+  const habits = useMemo(
+    () => rawHabits.map((h) => ({ ...h, ...calculateStreak(h.id, completions) })),
+    [rawHabits, completions]
+  );
 
   // Create habit mutation
   const createMutation = trpc.habits.create.useMutation({
@@ -112,34 +134,27 @@ export default function Dashboard() {
   });
 
   // Check in mutation - toggle completion
-  const checkInMutation = trpc.checkins.create.useMutation({
-    onSuccess: (data) => {
-      utils.checkins.calendar.invalidate();
-      utils.habits.list.invalidate();
-      queryClient.invalidateQueries({ queryKey: ["completions", "all"] });
-      setHeatmapKey((k) => k + 1);
-      // Only celebrate when checking IN (not when unchecking)
-      if (!(data as any).checked) return;
-      const prevStreak = (data as any).previousStreak ?? 0;
-      const newStreak = (data as any).currentStreak ?? 0;
-      // Check milestone first so we play only ONE sound (celebration overrides check-in)
-      const milestone =
-        newStreak > prevStreak ? getCrossedMilestone(prevStreak, newStreak) : null;
-      if (milestone) {
-        fireConfetti();
-        if (settings.soundEnabled) playCelebrationSound(); // replaces check-in sound
-        toast.success(`${milestone.emoji} ${milestone.message}`, {
-          duration: 5000,
-          style: { fontWeight: "600", fontSize: "15px" },
-        });
-      } else {
-        // Regular check-in — play the soft tick
-        if (settings.soundEnabled) playCheckInSound();
-      }
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to toggle habit");
-    },
+  // Optimistic: the callback below runs instantly on tap, before Supabase responds
+  const { toggle: toggleCheckIn } = useCheckIn(({ checked, prevStreak, newStreak }) => {
+    setHeatmapKey((k) => k + 1);
+    // Only celebrate when checking IN (not when unchecking)
+    if (!checked) return;
+    // Check milestone first so we play only ONE sound (celebration overrides check-in)
+    const milestone =
+      newStreak > prevStreak ? getCrossedMilestone(prevStreak, newStreak) : null;
+    if (milestone) {
+      fireConfetti();
+      vibrate(HAPTIC_MILESTONE);
+      if (settings.soundEnabled) playCelebrationSound(); // replaces check-in sound
+      toast.success(`${milestone.emoji} ${milestone.message}`, {
+        duration: 5000,
+        style: { fontWeight: "600", fontSize: "15px" },
+      });
+    } else {
+      vibrate(HAPTIC_CHECK);
+      // Regular check-in — play the soft tick
+      if (settings.soundEnabled) playCheckInSound();
+    }
   });
 
   // Delete habit mutation
@@ -208,7 +223,7 @@ export default function Dashboard() {
   };
 
   const handleCheckIn = (habitId: number, date: string) => {
-    checkInMutation.mutate({ habitId, date });
+    toggleCheckIn(habitId, date);
   };
 
   const getHabitColor = (habitId: number) => {
@@ -302,60 +317,25 @@ export default function Dashboard() {
     return dates;
   }, [dateRange]);
 
-  const startDateStr = dateRange.start.toISOString().split('T')[0];
-  const endDateStr = dateRange.end.toISOString().split('T')[0];
 
-  // Fetch calendar data for ALL habits in parallel
-  const habitCalendarQueries = useQueries({
-    queries: habits.map((habit) => ({
-      queryKey: ["checkins", "calendar", habit.id, startDateStr, endDateStr],
-      queryFn: async () => {
-        const completions = await storage.getCompletions();
-        const habitCompletions = completions.filter((c) => c.habitId === habit.id);
-        const completedDates = new Set(habitCompletions.map((c) => c.completedDate));
-
-        const start = new Date(startDateStr);
-        const end = new Date(endDateStr);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(0, 0, 0, 0);
-
-        const calendar: { date: string; completed: boolean }[] = [];
-        const current = new Date(start);
-        while (current <= end) {
-          const dateStr = current.toISOString().split("T")[0];
-          calendar.push({ date: dateStr, completed: completedDates.has(dateStr) });
-          current.setDate(current.getDate() + 1);
-        }
-        return { habitId: habit.id, calendar };
-      },
-      enabled: habits.length > 0,
-    })),
-  });
-
-  // Build completion map from all habits' results
+  // habitId -> { dateKey: true } built straight from the shared completions cache
+  // (updates instantly when a check-in is applied optimistically)
   const completionMap = useMemo(() => {
     const map: Record<number, Record<string, boolean>> = {};
-    habits.forEach((habit) => { map[habit.id] = {}; });
-
-    habitCalendarQueries.forEach((query) => {
-      if (query.data) {
-        query.data.calendar.forEach((item) => {
-          map[query.data!.habitId][item.date] = item.completed;
-        });
-      }
+    completions.forEach((c) => {
+      (map[c.habitId] ??= {})[c.completedDate] = true;
     });
-
     return map;
-  }, [habitCalendarQueries, habits]);
+  }, [completions]);
 
   // Graph data for selected habit
   const graphHabit = habits.find(h => h.id === selectedGraphHabitId) ?? null;
 
   const graphChartData = useMemo(() => {
     if (!selectedGraphHabitId) return [];
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getTodayKey();
     return calendarDates.map(date => {
-      const dateStr = date.toISOString().split("T")[0];
+      const dateStr = toDateKey(date);
       const isFuture = dateStr > todayStr;
       const completed = !isFuture && (completionMap[selectedGraphHabitId]?.[dateStr] ?? false);
       return {
@@ -379,7 +359,7 @@ export default function Dashboard() {
 
   // Check if date is completed for a habit
   const isDateCompleted = (habitId: number, date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = toDateKey(date);
     return completionMap[habitId]?.[dateStr] ?? false;
   };
 
@@ -408,6 +388,67 @@ export default function Dashboard() {
     setCurrentDate(newDate);
   };
 
+  // ── Shared habit ⋮ menu (used by both the grid rows and the mobile cards) ──
+  const toggleHabitMenu = (e: React.MouseEvent<HTMLElement>, habitId: number) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    let left = rect.right - 160;
+    if (left < 0) left = 4;
+    if (left + 168 > window.innerWidth) left = window.innerWidth - 172;
+    if (top + 220 > window.innerHeight) top = Math.max(8, rect.top - 224);
+    (menuRefs.current as any)[`pos-${habitId}`] = { top, left };
+    setOpenMenuId(openMenuId === habitId ? null : habitId);
+  };
+
+  const renderHabitMenu = (habitId: number, habitName: string) =>
+    openMenuId === habitId
+      ? createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
+            <div
+              ref={(el) => { menuRefs.current[habitId] = el; }}
+              className="fixed bg-background border rounded-2xl shadow-2xl z-50 min-w-40 overflow-hidden"
+              style={{
+                top: `${((menuRefs.current as any)[`pos-${habitId}`] as any)?.top ?? 0}px`,
+                left: `${((menuRefs.current as any)[`pos-${habitId}`] as any)?.left ?? 0}px`,
+              }}
+            >
+              <button onClick={() => handleEditHabit(habitId, habitName)} className="w-full px-4 py-3 md:py-2 text-left hover:bg-muted flex items-center gap-2 text-sm">
+                <Edit2 className="w-4 h-4" /> Edit
+              </button>
+              <button onClick={() => handleShowColorPicker(habitId)} className="w-full px-4 py-3 md:py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
+                <Palette className="w-4 h-4" /> Color
+              </button>
+              {!isFirstHabit(habitId) && (
+                <button onClick={() => handleReorderHabit("up")} className="w-full px-4 py-3 md:py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
+                  <ChevronUp className="w-4 h-4" /> Move Up
+                </button>
+              )}
+              {!isLastHabit(habitId) && (
+                <button onClick={() => handleReorderHabit("down")} className="w-full px-4 py-3 md:py-2 text-left hover:bg-muted flex items-center gap-2 text-sm">
+                  <ChevronDown className="w-4 h-4" /> Move Down
+                </button>
+              )}
+              <button onClick={() => handleArchiveHabit(habitId)} className="w-full px-4 py-3 md:py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
+                <Archive className="w-4 h-4" /> Archive
+              </button>
+              <button onClick={() => handleDeleteHabit(habitId)} className="w-full px-4 py-3 md:py-2 text-left hover:bg-red-50 dark:hover:bg-red-950 flex items-center gap-2 text-sm border-t text-red-600" disabled={deleteMutation.isPending}>
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            </div>
+          </>,
+          document.body
+        )
+      : null;
+
+  // Local-midnight keys, identical to the keys the grid stores check-ins under
+  const dateKey = toDateKey;
+  const todayMidnight = (() => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; })();
+  const todayKey = getTodayKey();
+
+  const scrollToId = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   const formatDateHeader = () => {
     const startStr = dateRange.start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const endStr = dateRange.end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -420,10 +461,10 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="bg-card sticky top-0 z-20">
-        <div className="max-w-full mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Flame className="w-8 h-8" style={{ color: "#f97316" }} />
-            <h1 className="text-2xl font-bold">Habits Tracker</h1>
+        <div className="max-w-full mx-auto px-4 py-3 md:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
+            <Flame className="w-7 h-7 md:w-8 md:h-8" style={{ color: "#f97316" }} />
+            <h1 className="text-xl md:text-2xl font-bold">Habits Tracker</h1>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -440,7 +481,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="max-w-full mx-auto px-4 py-6">
+      <div className="max-w-full mx-auto px-4 py-5 md:py-6 pb-28 md:pb-6">
         {/* Settings Modal */}
         {showSettings && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -461,19 +502,19 @@ export default function Dashboard() {
         )}
 
         {/* Controls */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div className="flex items-center justify-between mb-5 md:mb-6 flex-wrap gap-3 md:gap-4">
           <div>
-            <h2 className="text-xl font-semibold">Welcome, {user?.name?.split(" ")[0] ?? "there"}!</h2>
+            <h2 className="text-lg md:text-xl font-semibold">Welcome, {user?.name?.split(" ")[0] ?? "there"}!</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               Track your habits for {new Date(currentDate).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={handlePrevious}>
+          <div className="flex items-center justify-between gap-3 w-full sm:w-auto">
+            <Button variant="outline" size="sm" className="h-11 w-11 md:h-9 md:w-auto active:scale-95 transition-transform" onClick={handlePrevious} aria-label="Previous month">
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <span className="text-sm font-medium min-w-44 text-center">{formatDateHeader()}</span>
-            <Button variant="outline" size="sm" onClick={handleNext}>
+            <span className="text-sm font-medium sm:min-w-44 text-center">{formatDateHeader()}</span>
+            <Button variant="outline" size="sm" className="h-11 w-11 md:h-9 md:w-auto active:scale-95 transition-transform" onClick={handleNext} aria-label="Next month">
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
@@ -483,31 +524,47 @@ export default function Dashboard() {
         <QuoteOfDay />
 
         {/* Add Habit Form */}
-        <div className="mb-8 flex items-center">
-          {/* Left spacer — pushes Add button to center */}
-          <div className="flex-1" />
+        <div id="add-habit" className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-center gap-3">
+          {/* Left spacer — pushes Add button to center (desktop only) */}
+          <div className="hidden md:block flex-1" />
 
           {/* Center: Add / form */}
           {!isAddingHabit ? (
-            <Button onClick={() => setIsAddingHabit(true)} className="ht-accent-btn text-white font-semibold py-2 px-6">
+            <Button onClick={() => setIsAddingHabit(true)} className="ht-accent-btn text-white font-semibold py-2 px-6 h-11 md:h-auto w-full md:w-auto active:scale-95 transition-transform">
               <Plus className="w-4 h-4 mr-2" />
               Add New Habit
             </Button>
           ) : (
-            <form onSubmit={handleAddHabit} className="flex gap-2">
+            <form onSubmit={handleAddHabit} className="flex gap-2 w-full md:w-auto">
               <Input
                 placeholder="Habit name..."
                 value={newHabitName}
                 onChange={(e) => setNewHabitName(e.target.value)}
+                className="flex-1 min-w-0 h-11 md:h-auto text-base md:text-sm"
                 autoFocus
               />
-              <Button type="submit" disabled={createMutation.isPending}>Add</Button>
-              <Button type="button" variant="outline" onClick={() => setIsAddingHabit(false)}>Cancel</Button>
+              <Button type="submit" className="h-11 md:h-auto" disabled={createMutation.isPending}>Add</Button>
+              <Button type="button" className="h-11 md:h-auto" variant="outline" onClick={() => setIsAddingHabit(false)}>Cancel</Button>
             </form>
           )}
 
-          {/* Right spacer — contains sound toggle flush to the right */}
-          <div className="flex-1 flex justify-end">
+          {/* Right: view toggle (mobile) + sound toggle, flush to the right */}
+          <div className="flex-1 flex items-center justify-between md:justify-end gap-2">
+            <div className="md:hidden inline-flex rounded-xl border p-0.5 bg-muted/50" role="tablist" aria-label="Habit view">
+              {(["cards", "grid"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  role="tab"
+                  aria-selected={viewMode === mode}
+                  onClick={() => changeViewMode(mode)}
+                  className={`px-3 h-9 rounded-[10px] text-xs font-semibold transition-all ${
+                    viewMode === mode ? "bg-background shadow text-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  {mode === "cards" ? "Cards" : "Month grid"}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => update({ soundEnabled: !settings.soundEnabled })}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all hover:opacity-75 select-none"
@@ -553,7 +610,35 @@ export default function Dashboard() {
             No habits yet. Add one to get started!
           </div>
         ) : (
-          <div className="border rounded-2xl bg-card overflow-hidden">
+          <>
+          {/* Mobile card view (hidden on desktop, or when the month grid is chosen) */}
+          <div className={viewMode === "cards" ? "md:hidden" : "hidden"}>
+            <HabitCardList
+              habits={habits}
+              completionMap={completionMap}
+              calendarDates={calendarDates}
+              goals={habitGoals}
+              todayKey={todayKey}
+              today={todayMidnight}
+              dateKey={dateKey}
+              accentColor={settings.accentColor}
+              onToggle={handleCheckIn}
+              renderMenu={(habit) => (
+                <div className="relative shrink-0">
+                  <button
+                    onClick={(e) => toggleHabitMenu(e, habit.id)}
+                    className="h-10 w-10 -mr-2 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted"
+                    aria-label={`Options for ${habit.name}`}
+                  >
+                    <MoreVertical className="w-5 h-5" />
+                  </button>
+                  {renderHabitMenu(habit.id, habit.name)}
+                </div>
+              )}
+            />
+          </div>
+
+          <div className={`border rounded-2xl bg-card overflow-hidden ${viewMode === "cards" ? "hidden md:block" : ""}`}>
             <div ref={tableScrollRef} className="overflow-x-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full text-sm border-collapse">
               <thead>
@@ -599,64 +684,20 @@ export default function Dashboard() {
                         </div>
                         <div className="relative shrink-0">
                           <button
-                            onClick={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              let top = rect.bottom + 4;
-                              let left = rect.right - 160;
-                              if (left < 0) left = 4;
-                              if (top + 160 > window.innerHeight) top = rect.top - 164;
-                              (menuRefs.current as any)[`pos-${habit.id}`] = { top, left };
-                              setOpenMenuId(openMenuId === habit.id ? null : habit.id);
-                            }}
+                            onClick={(e) => toggleHabitMenu(e, habit.id)}
                             className={`p-1 rounded hover:bg-black/10 ${hasColor ? "text-white/80" : "text-muted-foreground"}`}
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
-                          {openMenuId === habit.id ? createPortal(
-                            <>
-                              <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
-                              <div
-                                ref={(el) => { menuRefs.current[habit.id] = el; }}
-                                className="fixed bg-background border rounded-2xl shadow-2xl z-50 min-w-40 overflow-hidden"
-                                style={{
-                                  top: `${((menuRefs.current as any)[`pos-${habit.id}`] as any)?.top ?? 0}px`,
-                                  left: `${((menuRefs.current as any)[`pos-${habit.id}`] as any)?.left ?? 0}px`,
-                                }}
-                              >
-                                <button onClick={() => handleEditHabit(habit.id, habit.name)} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm">
-                                  <Edit2 className="w-4 h-4" /> Edit
-                                </button>
-                                <button onClick={() => handleShowColorPicker(habit.id)} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
-                                  <Palette className="w-4 h-4" /> Color
-                                </button>
-                                {!isFirstHabit(habit.id) && (
-                                  <button onClick={() => handleReorderHabit('up')} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
-                                    <ChevronUp className="w-4 h-4" /> Move Up
-                                  </button>
-                                )}
-                                {!isLastHabit(habit.id) && (
-                                  <button onClick={() => handleReorderHabit('down')} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm">
-                                    <ChevronDown className="w-4 h-4" /> Move Down
-                                  </button>
-                                )}
-                                <button onClick={() => handleArchiveHabit(habit.id)} className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm border-t">
-                                  <Archive className="w-4 h-4" /> Archive
-                                </button>
-                                <button onClick={() => handleDeleteHabit(habit.id)} className="w-full px-4 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950 flex items-center gap-2 text-sm border-t text-red-600" disabled={deleteMutation.isPending}>
-                                  <Trash2 className="w-4 h-4" /> Delete
-                                </button>
-                              </div>
-                            </>,
-                            document.body
-                          ) : null}
+                          {renderHabitMenu(habit.id, habit.name)}
                         </div>
                       </td>
 
                       {/* Calendar cells */}
                       {calendarDates.map((date, idx) => {
-                        const dateStr = date.toISOString().split("T")[0];
+                        const dateStr = toDateKey(date);
                         const isCompleted = isDateCompleted(habit.id, date);
-                        const isToday = new Date().toISOString().split("T")[0] === dateStr;
+                        const isToday = todayKey === dateStr;
                         const isFutureDate = date > new Date();
                         return (
                           <td
@@ -715,11 +756,14 @@ export default function Dashboard() {
             </table>
             </div>
           </div>
+          </>
         )}
-        
+
         {/* Monthly Summary — above Progress */}
         {habits.length > 0 && (
-          <MonthlySummary habits={habits as any} currentDate={currentDate} />
+          <div id="insights">
+            <MonthlySummary habits={habits as any} currentDate={currentDate} />
+          </div>
         )}
 
         {/* Progress Graph Section */}
@@ -999,6 +1043,14 @@ export default function Dashboard() {
           document.body
         )}
       </div>
+
+      {/* Thumb-reachable navigation (phones only) */}
+      <BottomNav
+        onHabits={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        onAdd={() => { setIsAddingHabit(true); scrollToId("add-habit"); }}
+        onInsights={() => scrollToId("insights")}
+        onSettings={() => setShowSettings(true)}
+      />
     </div>
   );
 }

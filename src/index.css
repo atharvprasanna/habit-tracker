@@ -210,3 +210,33 @@
     @apply border-accent bg-accent text-accent-foreground;
   }
 }
+
+/* ── Mobile / touch polish ─────────────────────────────────────────────── */
+@keyframes ht-pop {
+  0%   { transform: scale(0.3); opacity: 0; }
+  60%  { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.ht-pop {
+  animation: ht-pop 0.28s ease-out;
+}
+
+button,
+[role="button"],
+input[type="checkbox"] {
+  touch-action: manipulation; /* removes the 300ms tap delay & double-tap zoom */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  overscroll-behavior-y: none;
+}
+
+/* Keep content clear of the iPhone home indicator when installed as an app */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-pop { animation: none; }
+}
