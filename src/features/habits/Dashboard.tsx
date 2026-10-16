@@ -17,6 +17,7 @@ import { useCompletions } from "./useCompletions";
 import { useCheckIn } from "./useCheckIn";
 import HabitCardList from "./HabitCardList";
 import BottomNav from "../../components/layout/BottomNav";
+import MobileAccountSection from "../../components/layout/MobileAccountSection";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { toDateKey, todayKey as getTodayKey } from "../../lib/dates";
@@ -491,6 +492,10 @@ export default function Dashboard() {
                 <button onClick={() => setShowSettings(false)} className="text-muted-foreground hover:text-foreground">✕</button>
               </div>
               <div className="p-4">
+                {/* Phones have no side navigation: account + help live here instead */}
+                <div className="md:hidden">
+                  <MobileAccountSection />
+                </div>
                 <SettingsPanel
                   settings={settings}
                   onUpdate={update}
