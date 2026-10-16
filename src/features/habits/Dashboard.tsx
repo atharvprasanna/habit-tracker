@@ -15,7 +15,6 @@ import { calculateStreak } from "../../lib/trpc";
 import { vibrate, HAPTIC_CHECK, HAPTIC_MILESTONE } from "../../lib/haptics";
 import { useCompletions } from "./useCompletions";
 import { useCheckIn } from "./useCheckIn";
-import HabitCardList from "./HabitCardList";
 import BottomNav from "../../components/layout/BottomNav";
 import MobileAccountSection from "../../components/layout/MobileAccountSection";
 import { createPortal } from "react-dom";
@@ -35,17 +34,6 @@ export default function Dashboard() {
   const { settings, update } = useSettings();
   const { fire: fireConfetti } = useConfetti();
   const utils = trpc.useUtils();
-  const [viewMode, setViewMode] = useState<"cards" | "grid">(() => {
-    try {
-      const saved = localStorage.getItem("habit-tracker-view");
-      if (saved === "cards" || saved === "grid") return saved;
-    } catch { /* ignore */ }
-    return typeof window !== "undefined" && window.innerWidth < 768 ? "cards" : "grid";
-  });
-  const changeViewMode = (mode: "cards" | "grid") => {
-    setViewMode(mode);
-    try { localStorage.setItem("habit-tracker-view", mode); } catch { /* ignore */ }
-  };
   const [newHabitName, setNewHabitName] = useState("");
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -443,8 +431,6 @@ export default function Dashboard() {
       : null;
 
   // Local-midnight keys, identical to the keys the grid stores check-ins under
-  const dateKey = toDateKey;
-  const todayMidnight = (() => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; })();
   const todayKey = getTodayKey();
 
   const scrollToId = (id: string) =>
@@ -482,7 +468,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="max-w-full mx-auto px-4 py-5 md:py-6 pb-28 md:pb-6">
+      <div className="max-w-full mx-auto px-3 md:px-4 py-5 md:py-6 pb-28 md:pb-6">
         {/* Settings Modal */}
         {showSettings && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -555,21 +541,6 @@ export default function Dashboard() {
 
           {/* Right: view toggle (mobile) + sound toggle, flush to the right */}
           <div className="flex-1 flex items-center justify-between md:justify-end gap-2">
-            <div className="md:hidden inline-flex rounded-xl border p-0.5 bg-muted/50" role="tablist" aria-label="Habit view">
-              {(["cards", "grid"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  role="tab"
-                  aria-selected={viewMode === mode}
-                  onClick={() => changeViewMode(mode)}
-                  className={`px-3 h-9 rounded-[10px] text-xs font-semibold transition-all ${
-                    viewMode === mode ? "bg-background shadow text-foreground" : "text-muted-foreground"
-                  }`}
-                >
-                  {mode === "cards" ? "Cards" : "Month grid"}
-                </button>
-              ))}
-            </div>
             <button
               onClick={() => update({ soundEnabled: !settings.soundEnabled })}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all hover:opacity-75 select-none"
@@ -615,56 +586,28 @@ export default function Dashboard() {
             No habits yet. Add one to get started!
           </div>
         ) : (
-          <>
-          {/* Mobile card view (hidden on desktop, or when the month grid is chosen) */}
-          <div className={viewMode === "cards" ? "md:hidden" : "hidden"}>
-            <HabitCardList
-              habits={habits}
-              completionMap={completionMap}
-              calendarDates={calendarDates}
-              goals={habitGoals}
-              todayKey={todayKey}
-              today={todayMidnight}
-              dateKey={dateKey}
-              accentColor={settings.accentColor}
-              onToggle={handleCheckIn}
-              renderMenu={(habit) => (
-                <div className="relative shrink-0">
-                  <button
-                    onClick={(e) => toggleHabitMenu(e, habit.id)}
-                    className="h-10 w-10 -mr-2 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted"
-                    aria-label={`Options for ${habit.name}`}
-                  >
-                    <MoreVertical className="w-5 h-5" />
-                  </button>
-                  {renderHabitMenu(habit.id, habit.name)}
-                </div>
-              )}
-            />
-          </div>
-
-          <div className={`border rounded-2xl bg-card overflow-hidden ${viewMode === "cards" ? "hidden md:block" : ""}`}>
+          <div className="border rounded-2xl bg-card overflow-hidden">
             <div ref={tableScrollRef} className="overflow-x-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b bg-muted">
-                  <th className="px-4 py-3 text-left font-semibold text-sm min-w-40 sticky left-0 bg-card z-10" style={{ willChange: 'transform' }}>
+                  <th className="px-2 md:px-4 py-2 md:py-3 text-left font-semibold text-xs md:text-sm min-w-[104px] md:min-w-40 sticky left-0 bg-card z-10" style={{ willChange: 'transform' }}>
                     Habit
                   </th>
                   {calendarDates.map((date, idx) => (
                     <th
                       key={idx}
-                      className="px-2 py-3 text-center font-semibold text-xs min-w-12 border-l"
+                      className="px-0.5 md:px-2 py-2 md:py-3 text-center font-semibold text-xs min-w-9 md:min-w-12 border-l"
                     >
                       <div className="font-bold">{date.toLocaleDateString("en-US", { weekday: "short" }).charAt(0)}</div>
                       <div className="text-xs text-muted-foreground">{date.getDate()}</div>
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-center font-semibold text-sm border-l w-24 min-w-24 bg-blue-50 dark:bg-blue-950 sticky right-28 z-10" style={{ willChange: 'transform' }}>
+                  <th className="px-1 md:px-4 py-2 md:py-3 text-center font-semibold text-xs md:text-sm border-l w-12 min-w-12 md:w-24 md:min-w-24 bg-blue-50 dark:bg-blue-950 sticky right-12 md:right-28 z-10" style={{ willChange: 'transform' }}>
                     Goal
                   </th>
-                  <th className="px-4 py-3 text-center font-semibold text-sm border-l w-28 min-w-28 bg-green-50 dark:bg-green-950 sticky right-0 z-10" style={{ willChange: 'transform' }}>
-                    Achievement
+                  <th className="px-1 md:px-4 py-2 md:py-3 text-center font-semibold text-xs md:text-sm border-l w-12 min-w-12 md:w-28 md:min-w-28 bg-green-50 dark:bg-green-950 sticky right-0 z-10" style={{ willChange: 'transform' }}>
+                    <span className="md:hidden">Done</span><span className="hidden md:inline">Achievement</span>
                   </th>
                 </tr>
               </thead>
@@ -678,14 +621,14 @@ export default function Dashboard() {
                     <tr key={habit.id} className="border-b hover:bg-muted/30">
                       {/* Habit name cell */}
                       <td
-                        className="px-4 py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r"
+                        className="px-2 md:px-4 py-2 md:py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r"
                         style={{ willChange: 'transform', ...(hasColor ? { backgroundColor: habit.color, color: "white" } : undefined) }}
                       >
                         <div className="flex-1 flex items-center gap-2 min-w-0">
                           {hasColor && (
                             <span className="inline-block w-2 h-2 rounded-full bg-white/50 shrink-0" />
                           )}
-                          <span className="text-[15px]">{habit.name}</span>
+                          <span className="text-[13px] md:text-[15px] leading-tight break-words">{habit.name}</span>
                         </div>
                         <div className="relative shrink-0">
                           <button
@@ -707,7 +650,7 @@ export default function Dashboard() {
                         return (
                           <td
                             key={idx}
-                            className={`px-2 py-3 text-center border-l cursor-pointer hover:bg-muted/50 transition-colors ${isToday ? "bg-blue-100 dark:bg-blue-900" : ""} ${isFutureDate ? "opacity-50 cursor-not-allowed" : ""}`}
+                            className={`px-0.5 md:px-2 py-2.5 md:py-3 text-center border-l cursor-pointer hover:bg-muted/50 transition-colors ${isToday ? "bg-blue-100 dark:bg-blue-900" : ""} ${isFutureDate ? "opacity-50 cursor-not-allowed" : ""}`}
                             onClick={() => !isFutureDate && handleCheckIn(habit.id, dateStr)}
                           >
                             <input
@@ -725,7 +668,7 @@ export default function Dashboard() {
                       })}
 
                       {/* Goal */}
-                      <td className="px-4 py-3 text-center border-l bg-blue-50 dark:bg-blue-950 sticky right-28 z-10 w-24 min-w-24" style={{ willChange: 'transform' }}>
+                      <td className="px-1 md:px-4 py-2 md:py-3 text-center border-l bg-blue-50 dark:bg-blue-950 sticky right-12 md:right-28 z-10 w-12 min-w-12 md:w-24 md:min-w-24" style={{ willChange: 'transform' }}>
                         <input
                           type="number"
                           min="0"
@@ -737,18 +680,18 @@ export default function Dashboard() {
                             setHabitGoals(updated);
                             localStorage.setItem("habit-tracker-goals", JSON.stringify(updated));
                           }}
-                          className="w-14 px-2 py-1 border rounded-xl text-center bg-background text-foreground"
+                          className="w-9 md:w-14 px-0 md:px-2 py-1 border rounded-lg md:rounded-xl text-center text-xs md:text-sm bg-background text-foreground"
                           placeholder="0"
                           title={`Max: ${calendarDates.length} days`}
                         />
                       </td>
 
                       {/* Achievement */}
-                      <td className="px-4 py-3 text-center border-l font-semibold bg-green-50 dark:bg-green-950 sticky right-0 z-10 w-28 min-w-28" style={{ willChange: 'transform' }}>
+                      <td className="px-1 md:px-4 py-2 md:py-3 text-center border-l font-semibold bg-green-50 dark:bg-green-950 sticky right-0 z-10 w-12 min-w-12 md:w-28 md:min-w-28" style={{ willChange: 'transform' }}>
                         <div className="flex items-center justify-center gap-2">
                           <span>{completionCount}</span>
                           {goal > 0 && (
-                            <span className="text-xs text-muted-foreground">
+                            <span className="hidden md:inline text-xs text-muted-foreground">
                               ({Math.round((completionCount / goal) * 100)}%)
                             </span>
                           )}
@@ -761,7 +704,6 @@ export default function Dashboard() {
             </table>
             </div>
           </div>
-          </>
         )}
 
         {/* Monthly Summary — above Progress */}
