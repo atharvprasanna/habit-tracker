@@ -3,6 +3,7 @@ import { Eye, EyeOff, Flame } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "./useAuth";
 import { isSupabaseEnabled } from "../../lib/supabaseClient";
+import { CONTACT_EMAIL } from "../legal/LegalPages";
 
 type Mode = "signin" | "signup" | "forgot" | "reset";
 
@@ -253,6 +254,14 @@ export default function Login() {
             )}
           </div>
         </div>
+
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          <a href="/privacy" className="hover:underline">Privacy</a>
+          {" · "}
+          <a href="/terms" className="hover:underline">Terms</a>
+          {" · "}
+          <a href={`mailto:${CONTACT_EMAIL}?subject=Habits%20Tracker%20feedback`} className="hover:underline">Feedback</a>
+        </p>
       </div>
     </div>
   );

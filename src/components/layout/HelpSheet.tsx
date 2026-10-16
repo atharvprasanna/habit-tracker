@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, X } from "lucide-react";
 import { InfoModal, INFO_TOPICS, type InfoTopic } from "./InfoModal";
+import { CONTACT_EMAIL } from "../../features/legal/LegalPages";
 
 const BLURBS: Record<string, string> = {
   what: "A quick tour of the app",
@@ -70,6 +71,14 @@ export default function HelpSheet({ open, onClose }: Props) {
                   </button>
                 ))}
               </div>
+
+              <p className="mt-4 text-center text-xs text-muted-foreground">
+                <a href={`mailto:${CONTACT_EMAIL}?subject=Habits%20Tracker%20feedback`} className="underline">Send feedback</a>
+                {" · "}
+                <a href="/privacy" className="underline">Privacy</a>
+                {" · "}
+                <a href="/terms" className="underline">Terms</a>
+              </p>
             </div>
           </div>,
           document.body

@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
+import { PrivacyPolicy, TermsOfService } from "./features/legal/LegalPages";
 import Dashboard from "./features/habits/Dashboard";
 import HabitDetail from "./features/habits/HabitDetail";
 import DashboardLayout from "./components/layout/DashboardLayout";
@@ -8,6 +9,11 @@ import { AuthProvider, useAuth } from "./features/auth/useAuth";
 
 function AppRoutes() {
   const { isAuthenticated, loading, recovering } = useAuth();
+  const [location] = useLocation();
+
+  // Public pages: reachable without signing in
+  if (location === "/privacy") return <PrivacyPolicy />;
+  if (location === "/terms") return <TermsOfService />;
 
   // Restoring the saved session: avoid flashing the login screen
   if (loading) {
