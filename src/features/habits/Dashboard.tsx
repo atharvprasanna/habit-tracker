@@ -49,6 +49,8 @@ export default function Dashboard() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  // True while the month grid is scrolled sideways: the sticky Habit column shrinks on phones
+  const [gridScrolled, setGridScrolled] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [editingHabitId, setEditingHabitId] = useState<number | null>(null);
@@ -592,7 +594,7 @@ export default function Dashboard() {
           <div className="border rounded-2xl bg-card overflow-hidden">
             <HorizontalScroll
               ref={tableScrollRef}
-              storageKey="habit-tracker-scroll-hint-seen"
+              onScrollX={(left) => setGridScrolled(left > 8)}
               label="Swipe to view the full month"
               accentColor={settings.accentColor}
               style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
@@ -600,7 +602,7 @@ export default function Dashboard() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b bg-muted">
-                  <th className="px-2 md:px-4 py-2 md:py-3 text-left font-semibold text-xs md:text-sm min-w-[104px] md:min-w-40 sticky left-0 bg-card z-10" style={{ willChange: 'transform' }}>
+                  <th className={`px-2 md:px-4 py-2 md:py-3 text-left font-semibold text-xs md:text-sm min-w-[104px] md:min-w-40 sticky left-0 bg-card z-10 ${gridScrolled ? "max-md:min-w-[68px] max-md:w-[68px] max-md:max-w-[68px]" : ""}`} style={{ willChange: 'transform' }}>
                     Habit
                   </th>
                   {calendarDates.map((date, idx) => (
@@ -630,9 +632,10 @@ export default function Dashboard() {
                     <tr key={habit.id} className="border-b hover:bg-muted/30">
                       {/* Habit name cell: plain background, colour shown as a tappable dot */}
                       <td
-                        className="px-2 md:px-4 py-2 md:py-3 font-semibold sticky left-0 z-10 flex items-center justify-between border-r bg-card"
+                        className={`px-2 md:px-4 py-2 md:py-3 font-semibold sticky left-0 z-10 border-r bg-card ${gridScrolled ? "max-md:min-w-[68px] max-md:w-[68px] max-md:max-w-[68px]" : ""}`}
                         style={{ willChange: 'transform' }}
                       >
+                       <div className="flex items-center justify-between">
                         <div className="flex-1 flex items-center gap-1.5 md:gap-2 min-w-0">
                           <button
                             type="button"
@@ -646,9 +649,9 @@ export default function Dashboard() {
                               style={hasColor ? { backgroundColor: habit.color, boxShadow: `0 0 0 3px ${habit.color}26` } : undefined}
                             />
                           </button>
-                          <span className="text-[13px] md:text-[15px] leading-tight break-words">{habit.name}</span>
+                          <span className={`text-[13px] md:text-[15px] leading-tight ${gridScrolled ? "max-md:truncate" : "break-words"}`}>{habit.name}</span>
                         </div>
-                        <div className="relative shrink-0">
+                        <div className={`relative shrink-0 ${gridScrolled ? "max-md:hidden" : ""}`}>
                           <button
                             onClick={(e) => toggleHabitMenu(e, habit.id)}
                             className="p-1 rounded hover:bg-muted text-muted-foreground"
@@ -657,6 +660,7 @@ export default function Dashboard() {
                           </button>
                           {renderHabitMenu(habit.id, habit.name)}
                         </div>
+                       </div>
                       </td>
 
                       {/* Calendar cells */}
@@ -837,7 +841,6 @@ export default function Dashboard() {
                 {/* Bar chart */}
                 <div className="text-xs text-muted-foreground mb-3">{formatDateHeader()}</div>
                 <HorizontalScroll
-                  storageKey="habit-tracker-chart-hint-seen"
                   label="Swipe to see every day"
                   accentColor={settings.accentColor}
                 >
