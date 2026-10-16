@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Award, CheckCircle2, Download, TrendingDown, TrendingUp } from "lucide-react";
-import { storage } from "./storage";
+import { storage } from "../../lib/storage";
 import { exportMonthlyPDF } from "./PdfExport";
 
 interface Habit {

@@ -1,5 +1,5 @@
 import React from "react";
-import { useAuth } from "./useAuth";
+import { useAuth } from "../../features/auth/useAuth";
 import {
   Avatar,
   AvatarImage,
@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
   useSidebar,
   useIsMobile
-} from "./ui-shims";
+} from "../ui/ui-shims";
 import { BookOpen, ChevronDown, ChevronRight, LayoutDashboard, LogOut, PanelLeft, Sparkles, TrendingUp, X } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";

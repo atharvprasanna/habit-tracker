@@ -1,18 +1,18 @@
-import { Button, Input } from "./ui-shims";
-import { useSettings } from "./useSettings";
-import { SettingsPanel } from "./SettingsPanel";
+import { Button, Input } from "../../components/ui/ui-shims";
+import { useSettings } from "../settings/useSettings";
+import { SettingsPanel } from "../settings/SettingsPanel";
 import QuoteOfDay from "./QuoteOfDay";
-import { useConfetti, getCrossedMilestone } from "./Confetti";
-import { playCheckInSound, playCelebrationSound } from "./sounds";
+import { useConfetti, getCrossedMilestone } from "../celebration/Confetti";
+import { playCheckInSound, playCelebrationSound } from "../celebration/sounds";
 import Heatmap from "./Heatmap";
 import MonthlySummary from "./MonthlySummary";
-import { trpc } from "./trpc";
-import { useAuth } from "./useAuth";
+import { trpc } from "../../lib/trpc";
+import { useAuth } from "../auth/useAuth";
 import { Flame, Plus, Trash2, ChevronLeft, ChevronRight, Settings, MoreVertical, Edit2, Archive, ChevronUp, ChevronDown, Palette, TrendingUp, CheckCircle2, Target, Sun, Moon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { storage } from "./storage";
+import { storage } from "../../lib/storage";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 

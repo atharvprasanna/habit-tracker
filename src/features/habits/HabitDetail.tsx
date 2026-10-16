@@ -1,6 +1,6 @@
-import { useAuth } from "./useAuth";
-import { Button, Card } from "./ui-shims";
-import { trpc } from "./trpc";
+import { useAuth } from "../auth/useAuth";
+import { Button, Card } from "../../components/ui/ui-shims";
+import { trpc } from "../../lib/trpc";
 import { ArrowLeft, Flame, Calendar } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";

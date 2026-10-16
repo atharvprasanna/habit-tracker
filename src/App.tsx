@@ -1,10 +1,10 @@
 import { Switch, Route } from "wouter";
-import Dashboard from "./Dashboard";
-import HabitDetail from "./HabitDetail";
-import DashboardLayout from "./DashboardLayout";
-import Login from "./Login";
+import Dashboard from "./features/habits/Dashboard";
+import HabitDetail from "./features/habits/HabitDetail";
+import DashboardLayout from "./components/layout/DashboardLayout";
+import Login from "./features/auth/Login";
 import { Toaster } from "sonner";
-import { AuthProvider, useAuth } from "./useAuth";
+import { AuthProvider, useAuth } from "./features/auth/useAuth";
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();

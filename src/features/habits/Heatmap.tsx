@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { storage } from "./storage";
+import { storage } from "../../lib/storage";
 
 interface Props {
   habits: { id: number; name: string; color: string }[];

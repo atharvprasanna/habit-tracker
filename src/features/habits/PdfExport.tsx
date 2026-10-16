@@ -1,4 +1,4 @@
-import { storage } from "./storage";
+import { storage } from "../../lib/storage";
 
 interface Habit {
   id: number;

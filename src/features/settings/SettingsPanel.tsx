@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 import { AppSettings, ACCENT_PRESETS, FontChoice } from "./useSettings";
-import { storage } from "./storage";
+import { storage } from "../../lib/storage";
 
 interface Props {
   settings: AppSettings;

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { setStorageUser } from "./storage";
+import { setStorageUser } from "../../lib/storage";
 
 export interface AuthUser {
   id: string;
